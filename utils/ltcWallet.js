@@ -290,14 +290,19 @@ async function createLtcPayment(deal) {
   const index = allocateWalletIndex();
   const { address } = addressFromIndex(index);
 
-  let payAmount = Number(deal.pay_amount);
-  if (!Number.isFinite(payAmount) || payAmount <= 0) {
-    try {
-      const { cryptoAmount } = await fiatToLtc(Number(deal.price), deal.currency);
-      payAmount = cryptoAmount;
-    } catch {
-      payAmount = null;
-    }
+  // Toujours recalculer au cours live (pas le montant figé à la création du deal)
+  let payAmount = null;
+  let rateUsed = null;
+  try {
+    const { cryptoAmount, rate } = await fiatToLtc(Number(deal.price), deal.currency, {
+      bypassCache: true,
+    });
+    payAmount = cryptoAmount;
+    rateUsed = rate;
+  } catch (err) {
+    console.warn("Cours LTC indisponible à la création paiement:", err.message);
+    payAmount = Number(deal.pay_amount);
+    if (!Number.isFinite(payAmount) || payAmount <= 0) payAmount = null;
   }
 
   db.prepare(
@@ -312,6 +317,7 @@ async function createLtcPayment(deal) {
     payment_status: "waiting",
     pay_currency: "LTC",
     wallet_index: index,
+    rate: rateUsed,
   };
 }
 

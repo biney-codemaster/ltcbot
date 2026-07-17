@@ -8,7 +8,7 @@ const {
   SeparatorSpacingSize,
 } = require("discord.js");
 const config = require("../config");
-const { formatLtcAmount } = require("./ltcPrice");
+const { formatLtcAmount, formatLtcRate } = require("./ltcPrice");
 const { statusLabel } = require("./ltcWallet");
 
 const { e, emojis } = config;
@@ -18,11 +18,19 @@ function applyEmoji(button, key) {
   return button;
 }
 
+function impliedRate(deal) {
+  const price = Number(deal.price);
+  const amount = Number(deal.pay_amount);
+  if (!Number.isFinite(price) || !Number.isFinite(amount) || amount <= 0) return null;
+  return price / amount;
+}
+
 function formatCryptoPrice(deal) {
   const crypto = deal.crypto || "LTC";
   const amount = formatLtcAmount(Number(deal.pay_amount));
   if (!amount) return `${crypto} · cours indisponible`;
-  return `≈ ${amount} ${crypto}`;
+  const rateTxt = formatLtcRate(impliedRate(deal), deal.currency);
+  return rateTxt ? `≈ ${amount} ${crypto} (${rateTxt})` : `≈ ${amount} ${crypto}`;
 }
 
 function dealTitle(deal) {
@@ -162,24 +170,17 @@ function buildPaymentContainer(deal) {
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const address = deal.pay_address || "*adresse en cours de génération*";
   const status = statusLabel(deal.payment_status || "waiting");
+  const rateTxt = formatLtcRate(impliedRate(deal), deal.currency);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("payment")}Paiement escrow
-` +
-        `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.
-
-` +
-        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`
-` +
-        `${e("wallet")}**Adresse**
-\`\`\`
-${address}
-\`\`\`
-` +
-        `${e("clock")}**Statut** — ${status}
-
-` +
+      `## ${e("payment")}Paiement escrow\n` +
+        `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.\n\n` +
+        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
+        (rateTxt ? `${e("money")}**Cours** — ${rateTxt}\n` : "") +
+        `${e("money")}**Prix deal** — ${deal.price}${deal.currency}\n` +
+        `${e("wallet")}**Adresse**\n\`\`\`\n${address}\n\`\`\`\n` +
+        `${e("clock")}**Statut** — ${status}\n\n` +
         `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`
     )
   );
@@ -189,7 +190,7 @@ ${address}
       applyEmoji(
         new ButtonBuilder()
           .setCustomId(`deal_check_payment:${deal.deal_code}`)
-          .setLabel("Vérifier le paiement")
+          .setLabel("Vérifier (acheteur)")
           .setStyle(ButtonStyle.Primary),
         "payment"
       ),
@@ -228,7 +229,7 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   const retryButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_regen_payment:${deal.deal_code}`)
-      .setLabel("Régénérer l'adresse")
+      .setLabel("Régénérer (acheteur)")
       .setStyle(ButtonStyle.Primary),
     "payment"
   );
@@ -252,7 +253,7 @@ function buildPaymentFailedContainer(deal, reason) {
   const retryButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_regen_payment:${deal.deal_code}`)
-      .setLabel("Nouvelle adresse")
+      .setLabel("Nouvelle adresse (acheteur)")
       .setStyle(ButtonStyle.Primary),
     "payment"
   );
@@ -297,7 +298,7 @@ function buildFundsHeldContainer(deal) {
   const walletButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
-      .setLabel(deal.seller_wallet ? "Modifier mon adresse" : "Adresse de retrait")
+      .setLabel(deal.seller_wallet ? "Modifier adresse (vendeur)" : "Adresse retrait (vendeur)")
       .setStyle(ButtonStyle.Secondary),
     "wallet"
   );
@@ -305,7 +306,7 @@ function buildFundsHeldContainer(deal) {
   const releaseButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_release:${deal.deal_code}`)
-      .setLabel(deal.payout_error ? "Réessayer la libération" : "Produit reçu — libérer")
+      .setLabel(deal.payout_error ? "Réessayer libération (acheteur)" : "Libérer (acheteur)")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!deal.seller_wallet),
     "release"

@@ -66,7 +66,10 @@ async function refreshDealPayment(deal) {
 
   const payment = await getPaymentStatus(deal.payment_id);
   const paymentStatus = payment.payment_status;
-  const resolvedAmount = resolvePayoutAmount(deal, payment);
+  // Garder le montant attendu (cours) tant que non payé ; une fois payé = montant réel reçu
+  const resolvedAmount = isPaidStatus(paymentStatus)
+    ? resolvePayoutAmount(deal, payment)
+    : deal.pay_amount;
 
   db.prepare(
     `UPDATE deals

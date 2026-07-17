@@ -41,8 +41,28 @@ function isStaff(member) {
   return config.staffRoleId && member.roles.cache.has(config.staffRoleId);
 }
 
+function isBuyer(deal, userId) {
+  return Boolean(deal.buyer_id) && userId === deal.buyer_id;
+}
+
+function isSeller(deal, userId) {
+  return Boolean(deal.seller_id) && userId === deal.seller_id;
+}
+
 function deny(interaction, message) {
   return interaction.reply({ content: `${e("error")}${message}`, flags: MessageFlags.Ephemeral });
+}
+
+/** Acheteur (ou staff). */
+function denyUnlessBuyer(interaction, deal) {
+  if (isBuyer(deal, interaction.user.id) || isStaff(interaction.member)) return null;
+  return deny(interaction, "Seul l'**acheteur** peut utiliser ce bouton.");
+}
+
+/** Vendeur (ou staff). */
+function denyUnlessSeller(interaction, deal) {
+  if (isSeller(deal, interaction.user.id) || isStaff(interaction.member)) return null;
+  return deny(interaction, "Seul le **vendeur** peut utiliser ce bouton.");
 }
 
 async function createAndSendPayment(channel, deal) {
@@ -240,9 +260,8 @@ async function handleCancelButton(interaction, dealCode) {
 async function handleCheckPaymentButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
-  if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
-  }
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
   if (!deal.payment_id) {
     return deny(interaction, "Aucun paiement n'a encore été généré.");
   }
@@ -279,9 +298,8 @@ async function handleCheckPaymentButton(interaction, dealCode) {
 async function handleRegenPaymentButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
-  if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
-  }
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
   if (!["payment_failed", "awaiting_payment"].includes(deal.status) && deal.payment_id) {
     // awaiting without usable payment also ok via payment_failed
   }
@@ -329,9 +347,8 @@ async function handleReleaseButton(interaction, dealCode) {
       return deny(interaction, "Les fonds ne sont pas encore en escrow.");
     }
   }
-  if (interaction.user.id !== deal.buyer_id && !isStaff(interaction.member)) {
-    return deny(interaction, "Seul l'acheteur (ou le staff) peut libérer les fonds.");
-  }
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
   if (!deal.seller_wallet) {
     return deny(
       interaction,
@@ -405,9 +422,8 @@ async function handleSellerWalletButton(interaction, dealCode) {
   if (!["funds_held", "disputed"].includes(deal.status)) {
     return deny(interaction, "L'adresse ne peut être définie qu'une fois les fonds sécurisés.");
   }
-  if (interaction.user.id !== deal.seller_id && !isStaff(interaction.member)) {
-    return deny(interaction, "Seul le vendeur (ou le staff) peut définir l'adresse de retrait.");
-  }
+  const blocked = denyUnlessSeller(interaction, deal);
+  if (blocked) return blocked;
 
   const modal = new ModalBuilder()
     .setCustomId(`deal_seller_wallet_modal:${dealCode}`)
@@ -436,9 +452,8 @@ async function handleSellerWalletModal(interaction) {
   const dealCode = interaction.customId.split(":")[1];
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
-  if (interaction.user.id !== deal.seller_id && !isStaff(interaction.member)) {
-    return deny(interaction, "Seul le vendeur (ou le staff) peut définir l'adresse de retrait.");
-  }
+  const blocked = denyUnlessSeller(interaction, deal);
+  if (blocked) return blocked;
 
   const wallet = interaction.fields.getTextInputValue("seller_wallet").trim();
   if (!isValidLtcAddress(wallet)) {
