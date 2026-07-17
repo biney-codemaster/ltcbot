@@ -19,6 +19,15 @@ function validateEnv() {
       "LTC_WALLET_MNEMONIC vide → le bot utilisera / créera wallet.mnemonic (SAUVEGARDE-LE)"
     );
   }
+  if (!process.env.ADMIN_LOGS_CHANNEL_ID) {
+    warnings.push("ADMIN_LOGS_CHANNEL_ID vide → pas de logs admin / transcripts");
+  }
+  if (!process.env.PUBLIC_LOGS_CHANNEL_ID) {
+    warnings.push("PUBLIC_LOGS_CHANNEL_ID vide → pas de logs publics des deals complétés");
+  }
+  if (!process.env.REVIEWS_CHANNEL_ID) {
+    warnings.push("REVIEWS_CHANNEL_ID vide → les avis ne seront pas publiés");
+  }
 
   return { ok: errors.length === 0, errors, warnings };
 }

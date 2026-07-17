@@ -395,19 +395,82 @@ function buildPayoutConfirmedContainer(deal) {
         `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
         `${e("info")}**TXID** — \`${txid}\`\n` +
         (explorerUrl ? `${e("next")}[Voir la transaction](${explorerUrl})\n\n` : "\n") +
-        `${e("staff")}Le staff peut fermer ce salon.`
+        `${e("next")}Prochaine étape : l'acheteur laisse un avis pour clôturer le deal.`
     )
   );
 
-  const closeButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_close:${deal.deal_code}`)
-      .setLabel("Fermer le salon")
-      .setStyle(ButtonStyle.Danger),
-    "close"
+  return container;
+}
+
+function buildReviewRequestContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal, { preferRoles: true });
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("confirm")}Avis de l'acheteur\n` +
+        `${e("buyer")}<@${deal.buyer_id}> — le paiement vendeur est confirmé.\n\n` +
+        `Laissez une **note** et un **avis** sur cette transaction.\n` +
+        `Vous pouvez publier l'avis de façon **anonyme**.\n\n` +
+        `${e("clock")}Le salon se fermera automatiquement après l'avis (transcript envoyé en MP).`
+    )
   );
 
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
+  const reviewButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_review:${deal.deal_code}`)
+      .setLabel("Laisser un avis")
+      .setStyle(ButtonStyle.Primary),
+    "confirm"
+  );
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(reviewButton));
+  return container;
+}
+
+function buildPublicReviewContainer(deal) {
+  const container = new ContainerBuilder();
+  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const stars =
+    deal.review_rating != null
+      ? `${"★".repeat(deal.review_rating)}${"☆".repeat(5 - Number(deal.review_rating))}`
+      : "—";
+  const authorLine = deal.review_anonymous
+    ? `${e("users")}**Auteur** — Acheteur anonyme`
+    : `${e("buyer")}**Auteur** — <@${deal.buyer_id}>`;
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`# ${e("confirm")}Nouvel avis escrow`)
+  );
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("deal")}Deal #${deal.deal_code}\n` +
+        `${authorLine}\n` +
+        `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n` +
+        `${e("product")}**Produit** — ${deal.product}\n` +
+        `${e("money")}**Prix** — ${deal.price}${deal.currency} · \`${amount} ${deal.crypto || "LTC"}\`\n` +
+        `${e("confirm")}**Note** — ${stars} (${deal.review_rating}/5)\n\n` +
+        `**Avis**\n${deal.review_text || "*Aucun texte*"}`
+    )
+  );
+  return container;
+}
+
+function buildReviewPostedContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal, { preferRoles: true });
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("success")}Avis enregistré\n` +
+        `${e("confirm")}Merci — le deal est clôturé.\n\n` +
+        `${e("info")}Un transcript HTML est envoyé au staff et en message privé aux deux parties.\n` +
+        `${e("close")}Fermeture automatique du salon…`
+    )
+  );
   return container;
 }
 
@@ -494,6 +557,9 @@ module.exports = {
   buildFundsHeldContainer,
   buildReleasedContainer,
   buildPayoutConfirmedContainer,
+  buildReviewRequestContainer,
+  buildPublicReviewContainer,
+  buildReviewPostedContainer,
   buildDisputeContainer,
   buildCloseTicketContainer,
 };

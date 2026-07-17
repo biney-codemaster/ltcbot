@@ -4,6 +4,8 @@ const {
   TextInputBuilder,
   TextInputStyle,
   LabelBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
 } = require("discord.js");
 const db = require("../database");
 const config = require("../config");
@@ -17,6 +19,7 @@ const {
   buildReleasedContainer,
   buildDisputeContainer,
   buildCloseTicketContainer,
+  buildPublicReviewContainer,
 } = require("../utils/dealContainer");
 const {
   createLtcPayment,
@@ -26,6 +29,8 @@ const {
 } = require("../utils/ltcWallet");
 const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/paymentPoller");
 const { formatLtcAmount } = require("../utils/ltcPrice");
+const { logAdmin } = require("../utils/dealLogger");
+const { finalizeDealAfterReview } = require("../utils/dealFinalize");
 
 const { e } = config;
 
@@ -184,6 +189,13 @@ async function handleConfirmButton(interaction, dealCode) {
 
     try {
       await createAndSendPayment(interaction.channel, updatedDeal);
+      const paidDeal = getDealByCode(dealCode);
+      await logAdmin(interaction.client, `Paiement généré #${dealCode}`, [
+        `${e("payment")}Adresse LTC créée`,
+        `${e("wallet")}**Adresse** — \`${paidDeal.pay_address || "—"}\``,
+        `${e("ltc")}**Montant** — \`${formatLtcAmount(Number(paidDeal.pay_amount)) || "—"} LTC\``,
+        `${e("buyer")}<@${paidDeal.buyer_id}> · ${e("seller")}<@${paidDeal.seller_id}>`,
+      ]);
     } catch (err) {
       console.error("Création paiement wallet LTC:", err.message);
       db.prepare(
@@ -255,6 +267,12 @@ async function handleCancelButton(interaction, dealCode) {
     components: [buildCloseTicketContainer(updatedDeal, interaction.user.id)],
     flags: MessageFlags.IsComponentsV2,
   });
+
+  await logAdmin(interaction.client, `Deal annulé #${dealCode}`, [
+    `${e("cancel")}Annulé par <@${interaction.user.id}>`,
+    `${e("product")}**Produit** — ${updatedDeal.product}`,
+    `${e("money")}**Prix** — ${updatedDeal.price}${updatedDeal.currency}`,
+  ]);
 }
 
 async function handleCheckPaymentButton(interaction, dealCode) {
@@ -391,6 +409,13 @@ async function handleReleaseButton(interaction, dealCode) {
       components: [buildReleasedContainer(updatedDeal)],
       flags: MessageFlags.IsComponentsV2,
     });
+
+    await logAdmin(interaction.client, `Payout diffusé #${dealCode}`, [
+      `${e("release")}Transaction broadcast`,
+      `${e("info")}**TXID** — \`${result.payoutId}\``,
+      `${e("wallet")}**Vers** — \`${deal.seller_wallet}\``,
+      `${e("buyer")}<@${deal.buyer_id}> → ${e("seller")}<@${deal.seller_id}>`,
+    ]);
 
     return interaction.editReply({
       content: `${e("success")}Payout initié vers le vendeur.`,
@@ -537,6 +562,12 @@ async function handleDisputeModal(interaction) {
     components: [buildDisputeContainer(updatedDeal, interaction.user.id)],
     flags: MessageFlags.IsComponentsV2,
   });
+
+  await logAdmin(interaction.client, `Litige ouvert #${dealCode}`, [
+    `${e("dispute")}Ouvert par <@${interaction.user.id}>`,
+    `**Motif** — ${reason.slice(0, 300)}`,
+    `${e("buyer")}<@${updatedDeal.buyer_id}> · ${e("seller")}<@${updatedDeal.seller_id}>`,
+  ]);
 }
 
 async function handleStaffReleaseButton(interaction, dealCode) {
@@ -592,6 +623,128 @@ async function handleStaffResolveButton(interaction, dealCode) {
   });
 }
 
+async function handleReviewButton(interaction, dealCode) {
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (deal.status !== "awaiting_review") {
+    return deny(interaction, "L'avis n'est disponible qu'après confirmation du payout.");
+  }
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
+  if (deal.review_at) {
+    return deny(interaction, "Un avis a déjà été enregistré pour ce deal.");
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId(`deal_review_modal:${dealCode}`)
+    .setTitle("Avis sur le deal");
+
+  const ratingLabel = new LabelBuilder()
+    .setLabel("Note")
+    .setStringSelectMenuComponent(
+      new StringSelectMenuBuilder()
+        .setCustomId("review_rating")
+        .setPlaceholder("Choisir une note")
+        .setRequired(true)
+        .addOptions(
+          new StringSelectMenuOptionBuilder().setLabel("5 — Excellent").setValue("5"),
+          new StringSelectMenuOptionBuilder().setLabel("4 — Bien").setValue("4"),
+          new StringSelectMenuOptionBuilder().setLabel("3 — Correct").setValue("3"),
+          new StringSelectMenuOptionBuilder().setLabel("2 — Décevant").setValue("2"),
+          new StringSelectMenuOptionBuilder().setLabel("1 — Mauvais").setValue("1")
+        )
+    );
+
+  const textLabel = new LabelBuilder()
+    .setLabel("Votre avis")
+    .setTextInputComponent(
+      new TextInputBuilder()
+        .setCustomId("review_text")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMaxLength(800)
+        .setPlaceholder("Décrivez votre expérience…")
+    );
+
+  const anonLabel = new LabelBuilder()
+    .setLabel("Publier anonymement ?")
+    .setStringSelectMenuComponent(
+      new StringSelectMenuBuilder()
+        .setCustomId("review_anonymous")
+        .setPlaceholder("Anonymat")
+        .setRequired(true)
+        .addOptions(
+          new StringSelectMenuOptionBuilder()
+            .setLabel("Non — afficher mon profil")
+            .setValue("no"),
+          new StringSelectMenuOptionBuilder()
+            .setLabel("Oui — avis anonyme")
+            .setValue("yes")
+        )
+    );
+
+  modal.addLabelComponents(ratingLabel, textLabel, anonLabel);
+  await interaction.showModal(modal);
+}
+
+async function handleReviewModal(interaction) {
+  const dealCode = interaction.customId.split(":")[1];
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (deal.status !== "awaiting_review") {
+    return deny(interaction, "L'avis n'est plus accepté pour ce deal.");
+  }
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
+  if (deal.review_at) {
+    return deny(interaction, "Un avis a déjà été enregistré.");
+  }
+
+  const rating = Number(interaction.fields.getStringSelectValues("review_rating")[0]);
+  const text = interaction.fields.getTextInputValue("review_text").trim();
+  const anonymous =
+    interaction.fields.getStringSelectValues("review_anonymous")[0] === "yes";
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return deny(interaction, "Note invalide.");
+  }
+  if (!text) {
+    return deny(interaction, "L'avis ne peut pas être vide.");
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  db.prepare(
+    `UPDATE deals
+     SET review_text = @review_text,
+         review_rating = @review_rating,
+         review_anonymous = @review_anonymous,
+         review_at = datetime('now'),
+         updated_at = datetime('now')
+     WHERE deal_code = @deal_code`
+  ).run({
+    review_text: text,
+    review_rating: rating,
+    review_anonymous: anonymous ? 1 : 0,
+    deal_code: dealCode,
+  });
+
+  const updated = getDealByCode(dealCode);
+  const reviewContainer = buildPublicReviewContainer(updated);
+
+  try {
+    await finalizeDealAfterReview(interaction.client, updated, { reviewContainer });
+    return interaction.editReply({
+      content: `${e("success")}Avis enregistré. Le deal se ferme — transcript en cours d'envoi.`,
+    });
+  } catch (err) {
+    console.error("Finalisation deal:", err);
+    return interaction.editReply({
+      content: `${e("error")}Avis sauvé mais finalisation partielle : \`${err.message}\``,
+    });
+  }
+}
+
 async function handleCloseButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
@@ -599,6 +752,11 @@ async function handleCloseButton(interaction, dealCode) {
   if (!isStaff(interaction.member)) {
     return deny(interaction, "Seul le staff peut fermer ce salon.");
   }
+
+  await logAdmin(interaction.client, `Salon fermé #${dealCode}`, [
+    `${e("close")}Fermé par <@${interaction.user.id}>`,
+    `**Statut deal** — ${deal.status}`,
+  ]);
 
   await interaction.reply({
     content: `${e("close")}Salon fermé par <@${interaction.user.id}>. Suppression dans 5 secondes...`,
@@ -623,5 +781,7 @@ module.exports = {
   handleStaffReleaseButton,
   handleStaffResolveButton,
   handleCloseButton,
+  handleReviewButton,
+  handleReviewModal,
   getDealByCode,
 };

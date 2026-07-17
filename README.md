@@ -12,20 +12,21 @@ chaque deal reçoit une adresse unique → fonds sur cette adresse → libérati
 
 ## Prérequis
 
-1. Bot Discord + intents Guilds
+1. Bot Discord + intents Guilds, GuildMessages, Message Content
 2. Node.js 18+ (20+ recommandé)
 3. Accès sortant HTTPS vers `litecoinspace.org` (explorer + broadcast)
+4. 3 salons : logs admin, logs publics, avis
 
 ## Installation
 
 ```bash
 cp .env.example .env
-# remplir DISCORD_* ; LTC_WALLET_MNEMONIC optionnel au 1er start
+# remplir DISCORD_* + channel IDs ; LTC_WALLET_MNEMONIC optionnel au 1er start
 npm install
 npm start
 ```
 
-Au **premier démarrage**, si `LTC_WALLET_MNEMONIC` est vide, le bot crée `wallet.mnemonic` et l'affiche dans les logs. **Sauvegarde cette seed** (Pterodactyl backups / gestionnaire de mots de passe).
+Au **premier démarrage**, si `LTC_WALLET_MNEMONIC` est vide, le bot crée `wallet.mnemonic` et l'affiche dans les logs. **Sauvegarde cette seed**.
 
 ## Variables `.env`
 
@@ -36,19 +37,23 @@ Au **premier démarrage**, si `LTC_WALLET_MNEMONIC` est vide, le bot crée `wall
 | `GUILD_ID` | reco | Serveur de test |
 | `STAFF_ROLE_ID` | reco | Rôle staff |
 | `LTC_WALLET_MNEMONIC` | reco | Seed BIP39 (sinon `wallet.mnemonic`) |
+| `ADMIN_LOGS_CHANNEL_ID` | reco | Logs admin + transcripts HTML |
+| `PUBLIC_LOGS_CHANNEL_ID` | reco | Logs publics (deals **complétés** uniquement) |
+| `REVIEWS_CHANNEL_ID` | reco | Publication des avis acheteurs |
 
 ## Flow
 
 1. `/setup` → panneau
 2. Deal → rôles → confirmation
-3. Adresse LTC unique générée (HD `m/84'/2'/0'/0/{n}`)
-4. Acheteur paie → confirmations (poll 30s via litecoinspace)
+3. Adresse LTC unique générée
+4. Acheteur paie → fonds sécurisés
 5. Vendeur donne son adresse → acheteur libère
-6. Bot signe et broadcast le payout depuis l'adresse du deal
-7. L'adresse deal n'est plus réutilisée
+6. Payout on-chain confirmé
+7. Acheteur laisse un avis (note + texte, option anonyme)
+8. Avis publié → log public → transcript HTML (admin + MP) → salon fermé
 
 ## Important
 
 - **Sauvegarde la seed** : sans elle, impossible de recovery les fonds.
-- Les seuls frais sont ceux du **réseau Litecoin** au moment du payout (quelques sat/vB).
+- Les seuls frais sont ceux du **réseau Litecoin** au moment du payout.
 - Ne partage jamais `wallet.mnemonic` ni `LTC_WALLET_MNEMONIC`.

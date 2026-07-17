@@ -117,6 +117,36 @@ try {
 } catch {
   // colonne déjà présente
 }
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_text TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_rating INTEGER`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_anonymous INTEGER NOT NULL DEFAULT 0`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_at TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN completed_at TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_prompted INTEGER NOT NULL DEFAULT 0`);
+} catch {
+  // colonne déjà présente
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS wallet_meta (

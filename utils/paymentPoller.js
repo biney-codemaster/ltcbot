@@ -14,9 +14,12 @@ const {
   buildFundsHeldContainer,
   buildPaymentFailedContainer,
   buildPayoutConfirmedContainer,
+  buildReviewRequestContainer,
 } = require("./dealContainer");
 const { MessageFlags } = require("discord.js");
 const { e } = require("../config");
+const { logAdmin } = require("./dealLogger");
+const { formatLtcAmount } = require("./ltcPrice");
 
 const POLL_INTERVAL_MS = 30_000;
 /** @type {import('discord.js').Client | null} */
@@ -107,6 +110,12 @@ async function refreshDealPayment(deal) {
     });
     updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
     await publishFundsHeld(updated);
+    await logAdmin(client, `Paiement reçu #${updated.deal_code}`, [
+      `${e("shield")}Fonds sécurisés en escrow`,
+      `${e("ltc")}**Montant** — \`${formatLtcAmount(Number(updated.pay_amount)) || "—"} LTC\``,
+      `${e("wallet")}**Adresse** — \`${updated.pay_address || "—"}\``,
+      `${e("buyer")}<@${updated.buyer_id}> → ${e("seller")}<@${updated.seller_id}>`,
+    ]);
     return updated;
   }
 
@@ -159,17 +168,53 @@ async function refreshDealPayout(deal) {
         const channel = await client.channels.fetch(deal.channel_id);
         if (channel?.isTextBased()) {
           if (newlyConfirmed) {
+            db.prepare(
+              `UPDATE deals
+               SET status = 'awaiting_review',
+                   payout_status = @payout_status,
+                   updated_at = datetime('now')
+               WHERE deal_code = @deal_code`
+            ).run({ payout_status: payoutStatus, deal_code: deal.deal_code });
+
+            const confirmed = db
+              .prepare("SELECT * FROM deals WHERE deal_code = ?")
+              .get(deal.deal_code);
+
             await channel.send({
-              components: [buildPayoutConfirmedContainer(updated)],
+              components: [buildPayoutConfirmedContainer(confirmed)],
               flags: MessageFlags.IsComponentsV2,
             });
-          } else {
-            await channel.send({
-              content:
-                `${e("error")}Payout #${deal.deal_code} échoué — statut **${payoutStatus}**. ` +
-                `TXID : \`${deal.payout_id}\``,
-            }).catch(() => {});
+
+            if (!confirmed.review_prompted) {
+              await channel.send({
+                components: [buildReviewRequestContainer(confirmed)],
+                flags: MessageFlags.IsComponentsV2,
+              });
+              db.prepare(
+                `UPDATE deals SET review_prompted = 1 WHERE deal_code = ?`
+              ).run(deal.deal_code);
+            }
+
+            await logAdmin(client, `Payout confirmé #${deal.deal_code}`, [
+              `${e("success")}Fonds envoyés au vendeur`,
+              `${e("info")}**TXID** — \`${deal.payout_id}\``,
+              `${e("wallet")}**Adresse** — \`${deal.seller_wallet || "—"}\``,
+              `${e("next")}En attente de l'avis acheteur`,
+            ]);
+
+            return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
           }
+
+          await channel.send({
+            content:
+              `${e("error")}Payout #${deal.deal_code} échoué — statut **${payoutStatus}**. ` +
+              `TXID : \`${deal.payout_id}\``,
+          }).catch(() => {});
+
+          await logAdmin(client, `Payout échoué #${deal.deal_code}`, [
+            `${e("error")}Statut **${payoutStatus}**`,
+            `${e("info")}**TXID** — \`${deal.payout_id}\``,
+          ]);
         }
       } catch {
         // ignore

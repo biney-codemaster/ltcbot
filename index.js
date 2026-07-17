@@ -31,6 +31,8 @@ const {
   handleStaffReleaseButton,
   handleStaffResolveButton,
   handleCloseButton,
+  handleReviewButton,
+  handleReviewModal,
 } = require("./interactions/dealButtons");
 require("./database"); // initialise la DB au démarrage
 const { startPaymentPoller } = require("./utils/paymentPoller");
@@ -42,7 +44,11 @@ if (!logEnvValidation()) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
 });
 
 const commands = [setupCommand.data.toJSON()];
@@ -222,6 +228,11 @@ client.on("interactionCreate", async (interaction) => {
       await handleCloseButton(interaction, dealCode);
     }
 
+    if (interaction.isButton() && interaction.customId.startsWith("deal_review:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleReviewButton(interaction, dealCode);
+    }
+
     if (interaction.isModalSubmit() && interaction.customId === "escrow_deal_modal") {
       await handleDealModal(interaction);
     }
@@ -232,6 +243,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith("deal_dispute_modal:")) {
       await handleDisputeModal(interaction);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("deal_review_modal:")) {
+      await handleReviewModal(interaction);
     }
   } catch (err) {
     console.error("Erreur interaction:", err);

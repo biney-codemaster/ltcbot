@@ -69,6 +69,11 @@ module.exports = {
   /** Seed BIP39 du wallet HD escrow (sinon fichier wallet.mnemonic auto-créé). */
   ltcWalletMnemonic: (process.env.LTC_WALLET_MNEMONIC || "").trim() || null,
 
+  /** Salons Discord (IDs). */
+  adminLogsChannelId: (process.env.ADMIN_LOGS_CHANNEL_ID || "").trim() || null,
+  publicLogsChannelId: (process.env.PUBLIC_LOGS_CHANNEL_ID || "").trim() || null,
+  reviewsChannelId: (process.env.REVIEWS_CHANNEL_ID || "").trim() || null,
+
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages
   e, // helper d'affichage: e("deal") => "<:deal:id> " ou ""
