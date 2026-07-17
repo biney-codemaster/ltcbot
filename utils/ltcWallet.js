@@ -220,8 +220,13 @@ async function getAddressUtxos(address) {
 async function getFeeRate() {
   try {
     const fees = await explorerGet(`/v1/fees/recommended`);
-    const rate = Number(fees?.halfHourFee || fees?.fastestFee || fees?.hourFee);
-    if (Number.isFinite(rate) && rate > 0) return Math.max(1, Math.ceil(rate));
+    const rate = Number(
+      fees?.fastestFee || fees?.halfHourFee || fees?.hourFee || fees?.minimumFee
+    );
+    if (Number.isFinite(rate) && rate > 0) {
+      // Floor à 2 lit/vB + marge : le min-relay LTC rejette souvent 1 lit/vB exact
+      return Math.max(2, Math.ceil(rate));
+    }
   } catch (err) {
     console.warn("Fee rate LTC:", err.message);
   }
@@ -229,8 +234,46 @@ async function getFeeRate() {
 }
 
 function estimateVsize(inputCount, outputCount) {
-  // P2WPKH approx
-  return 10 + inputCount * 68 + outputCount * 31;
+  // P2WPKH weight/4 — léger surplus pour éviter min-relay "109 < 113"
+  return Math.ceil(10.5 + inputCount * 68.25 + outputCount * 31) + 4;
+}
+
+function buildSweepTransaction(spendable, payment, keyPair, toAddress, fee, total) {
+  const sendValue = total - fee;
+  if (sendValue <= DUST_LITOSHIS) {
+    throw new Error(
+      `Solde trop bas pour couvrir les frais réseau (${litoshisToLtc(total)} LTC, frais ≈ ${litoshisToLtc(fee)} LTC)`
+    );
+  }
+
+  const psbt = new bitcoin.Psbt({ network: LITECOIN });
+  for (const utxo of spendable) {
+    psbt.addInput({
+      hash: utxo.txid,
+      index: utxo.vout,
+      witnessUtxo: {
+        script: payment.output,
+        value: BigInt(utxo.value),
+      },
+    });
+  }
+  psbt.addOutput({
+    address: toAddress,
+    value: sendValue,
+  });
+
+  for (let i = 0; i < spendable.length; i++) {
+    psbt.signInput(i, keyPair);
+  }
+  psbt.finalizeAllInputs();
+  const tx = psbt.extractTransaction();
+  return { tx, sendValue };
+}
+
+function parseMinRelayRequired(errMessage) {
+  const match = String(errMessage || "").match(/min relay fee not met,\s*(\d+)\s*<\s*(\d+)/i);
+  if (!match) return null;
+  return BigInt(match[2]);
 }
 
 /** Pas de minimum commercial — soft-check dust seulement (jamais bloquant). */
@@ -364,41 +407,53 @@ async function payoutToSeller(deal, paymentDetails) {
 
   const total = spendable.reduce((sum, u) => sum + BigInt(u.value), 0n);
   const feeRate = await getFeeRate();
-  const vsize = estimateVsize(spendable.length, 1);
-  const fee = BigInt(vsize * feeRate);
-  if (total <= fee + DUST_LITOSHIS) {
-    throw new Error(
-      `Solde trop bas pour couvrir les frais réseau (${litoshisToLtc(total)} LTC, frais ≈ ${litoshisToLtc(fee)} LTC)`
-    );
-  }
+  let fee = BigInt(estimateVsize(spendable.length, 1) * feeRate);
 
-  const sendValue = total - fee;
   const keyPair = ECPair.fromPrivateKey(Buffer.from(child.privateKey), {
     network: LITECOIN,
   });
+  const toAddress = deal.seller_wallet.trim();
 
-  const psbt = new bitcoin.Psbt({ network: LITECOIN });
-  for (const utxo of spendable) {
-    psbt.addInput({
-      hash: utxo.txid,
-      index: utxo.vout,
-      witnessUtxo: {
-        script: payment.output,
-        value: BigInt(utxo.value),
-      },
-    });
+  // 1er build → mesurer la vsize réelle et remonter les frais si besoin
+  let { tx, sendValue } = buildSweepTransaction(
+    spendable,
+    payment,
+    keyPair,
+    toAddress,
+    fee,
+    total
+  );
+  const needed = BigInt(Math.ceil(tx.virtualSize() * feeRate) + 8);
+  if (fee < needed) {
+    fee = needed;
+    ({ tx, sendValue } = buildSweepTransaction(
+      spendable,
+      payment,
+      keyPair,
+      toAddress,
+      fee,
+      total
+    ));
   }
-  psbt.addOutput({
-    address: deal.seller_wallet.trim(),
-    value: sendValue,
-  });
 
-  for (let i = 0; i < spendable.length; i++) {
-    psbt.signInput(i, keyPair);
+  let txid;
+  try {
+    txid = await explorerPostTx(tx.toHex());
+  } catch (err) {
+    const required = parseMinRelayRequired(err.message);
+    if (required == null) throw err;
+    // Retry unique avec le minimum relay + marge
+    fee = required + 20n;
+    ({ tx, sendValue } = buildSweepTransaction(
+      spendable,
+      payment,
+      keyPair,
+      toAddress,
+      fee,
+      total
+    ));
+    txid = await explorerPostTx(tx.toHex());
   }
-  psbt.finalizeAllInputs();
-  const tx = psbt.extractTransaction();
-  const txid = await explorerPostTx(tx.toHex());
 
   return {
     payoutId: txid,
@@ -406,7 +461,7 @@ async function payoutToSeller(deal, paymentDetails) {
     raw: {
       txid,
       from: address,
-      to: deal.seller_wallet.trim(),
+      to: toAddress,
       amount_ltc: litoshisToLtc(sendValue),
       fee_ltc: litoshisToLtc(fee),
       unused_address: true,
