@@ -33,7 +33,7 @@ function buildSetupContainer() {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `${e("shield")}Intermédiaire de confiance entre **acheteur** et **vendeur**.\n` +
-        `Les fonds sont sécurisés sur Plisio jusqu'à confirmation de réception.\n\n` +
+        `Les fonds sont sécurisés via BlockBee jusqu'à confirmation de réception.\n\n` +
         `## ${e("info")}Déroulement\n` +
         `1. Création du deal et salon privé\n` +
         `2. Choix des rôles (acheteur / vendeur)\n` +

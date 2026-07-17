@@ -66,8 +66,7 @@ module.exports = {
   clientId: process.env.CLIENT_ID,
   guildId: process.env.GUILD_ID, // pour enregistrer les commandes en dev (instant), sinon global
   staffRoleId: process.env.STAFF_ROLE_ID, // rôle staff/médiateur ayant accès aux salons de deal
-  plisioApiKey: (process.env.PLISIO_API_KEY || "").trim() || null,
-  plisioCallbackUrl: (process.env.PLISIO_CALLBACK_URL || "").trim() || null,
+  blockbeeApiKey: (process.env.BLOCKBEE_API_KEY || "").trim() || null,
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages

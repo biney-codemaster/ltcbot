@@ -14,8 +14,8 @@ function validateEnv() {
   if (!process.env.STAFF_ROLE_ID) {
     warnings.push("STAFF_ROLE_ID vide → le staff n'aura pas accès aux salons / fermetures");
   }
-  if (!process.env.PLISIO_API_KEY) {
-    errors.push("PLISIO_API_KEY manquant (création d'adresses LTC impossible)");
+  if (!process.env.BLOCKBEE_API_KEY) {
+    errors.push("BLOCKBEE_API_KEY manquant (API Key V2 BlockBee requise)");
   }
 
   return { ok: errors.length === 0, errors, warnings };

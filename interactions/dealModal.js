@@ -4,7 +4,7 @@ const { createDealChannel } = require("../utils/dealChannel");
 const { generateUniqueDealCode } = require("../utils/dealCode");
 const { buildRoleSelectionContainer } = require("../utils/dealContainer");
 const { fiatToLtc } = require("../utils/ltcPrice");
-const { assertAboveMinAmount } = require("../utils/plisio");
+const { assertAboveMinAmount } = require("../utils/blockbee");
 const { MessageFlags } = require("discord.js");
 
 const { e } = config;
@@ -80,7 +80,7 @@ async function handleDealModal(interaction) {
     });
   }
 
-  // --- Minimum Plisio (quasi dust, rarement bloquant) ---
+  // --- Minimum BlockBee (quasi dust, rarement bloquant) ---
   try {
     await assertAboveMinAmount({ price, currency, crypto });
   } catch (err) {

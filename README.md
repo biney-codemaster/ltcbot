@@ -1,27 +1,26 @@
 # ltcbot — Discord Litecoin Escrow
 
-Bot Discord d'escrow LTC via **Plisio** :
-l'acheteur paie → fonds sur le solde Plisio → libération vers l'adresse du vendeur.
+Bot Discord d'escrow LTC via **BlockBee** :
+l'acheteur paie → fonds sur ton Self-Custodial Wallet → libération vers le vendeur.
 
-## Pourquoi Plisio
+## Pourquoi BlockBee
 
-- Inscription **instantanée** (pas d'attente d'approbation type OxaPay)
-- Pas de KYC pour démarrer
-- Minimum LTC très bas
-- Une seule clé API (`PLISIO_API_KEY`)
-- Invoice + withdrawal (`cash_out`) pour l'escrow
+- Inscription **instantanée** (pas d'approbation OxaPay)
+- **Pas de vérification de domaine** (contrairement à Plisio)
+- Une seule clé : `BLOCKBEE_API_KEY` (API Key **V2**)
+- Minimum LTC ≈ **0.002 LTC** (~0.08–0.20€ selon le cours) — mieux que NOWPayments (~2$)
 
 ## Prérequis
 
-1. Bot Discord (token + `CLIENT_ID`) avec intents **Guilds**
-2. Compte [Plisio](https://plisio.net) + shop API (secret key)
+1. Bot Discord + intents Guilds
+2. Compte [BlockBee](https://dash.blockbee.io/) + **API Key V2** (+ Recovery Key sauvegardée)
 3. Node.js 18+
 
 ## Installation
 
 ```bash
 cp .env.example .env
-# remplir le .env
+# remplir BLOCKBEE_API_KEY=...
 npm install
 npm start
 ```
@@ -30,38 +29,31 @@ npm start
 
 | Variable | Requis | Rôle |
 |----------|--------|------|
-| `DISCORD_TOKEN` | oui | Token du bot |
+| `DISCORD_TOKEN` | oui | Token Discord |
 | `CLIENT_ID` | oui | Application ID |
-| `GUILD_ID` | reco | Serveur de test (commandes instantanées) |
-| `STAFF_ROLE_ID` | reco | Rôle médiateur / fermeture salons |
-| `PLISIO_API_KEY` | oui | Secret key Plisio (API settings) |
-| `PLISIO_CALLBACK_URL` | optionnel | Webhook (non requis : polling 30s) |
+| `GUILD_ID` | reco | Serveur de test |
+| `STAFF_ROLE_ID` | reco | Rôle staff |
+| `BLOCKBEE_API_KEY` | oui | API Key **V2** BlockBee |
 
-## Setup Plisio
+## Setup BlockBee (5 min)
 
-1. Créer un compte sur [plisio.net](https://plisio.net) (immédiat)
-2. API → créer / configurer un **shop**
-3. Copier la **Secret key** → `PLISIO_API_KEY`
-4. Activer le **White-label** sur le shop (sinon pas d'adresse LTC dans l'API, seulement un lien invoice)
-5. Pour les payouts : whitelister l'**IP du VPS** dans les settings API (Request IP)
+1. Créer un compte sur [dash.blockbee.io](https://dash.blockbee.io/)
+2. **API Keys** → générer **API Key V2** (sauvegarde aussi la Recovery Key !)
+3. **Wallet** → activer le Self-Custodial Wallet LTC
+4. Sur la page Wallet : **Set Self-Custodial Wallet** comme destination des paiements reçus
+5. Coller la clé V2 dans `BLOCKBEE_API_KEY`
+6. `npm start`
+
+## Important
+
+- Deals **sous ~0.002 LTC** (souvent ~0.05€) = fonds perdus côté réseau. Mets au moins ~0.20€.
+- Sans Self-Custodial Wallet comme destination, le payout vendeur ne marchera pas.
 
 ## Flow
 
 1. `/setup` → panneau
-2. Start a deal → formulaire
-3. Rôles acheteur / vendeur → double confirmation
-4. Adresse LTC (white-label) → acheteur paie
-5. Statut `completed` → fonds sur solde Plisio
-6. Vendeur renseigne son adresse → acheteur libère
-7. `cash_out` Plisio → vendeur
-
-## Emojis custom
-
-Dans `config.js`, remplace chaque `null` par `<:nom:id>` (copie via `\:emoji:` sur Discord).
-
-## Mise en prod
-
-1. Remplir `.env` avec `PLISIO_API_KEY`
-2. White-label ON + IP VPS whitelistée
-3. `npm start`
-4. `/setup` puis un deal réel
+2. Deal → rôles → confirmation
+3. Adresse LTC générée → acheteur paie
+4. Confirmations → fonds sécurisés
+5. Vendeur donne son adresse → acheteur libère
+6. Payout BlockBee → vendeur
