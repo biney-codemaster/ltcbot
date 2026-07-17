@@ -87,5 +87,25 @@ try {
 } catch {
   // colonne déjà présente
 }
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN seller_wallet TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN payout_id TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN payout_status TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN payout_error TEXT`);
+} catch {
+  // colonne déjà présente
+}
 
 module.exports = db;

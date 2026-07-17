@@ -205,21 +205,34 @@ function buildFundsHeldContainer(deal) {
   const container = new ContainerBuilder();
   addStandardHeader(container, deal);
 
+  const walletLine = deal.seller_wallet
+    ? `${e("wallet")}**Adresse vendeur** — \`${deal.seller_wallet}\``
+    : `${e("warning")}**Adresse vendeur** — non renseignée (obligatoire avant libération)`;
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("shield")}Fonds sécurisés\n` +
-        `${e("success")}Le paiement a été reçu et est conservé en escrow.\n\n` +
+        `${e("success")}Le paiement a été reçu et est conservé en **Custody** NOWPayments (escrow).\n\n` +
         `${e("seller")}<@${deal.seller_id}> — livrez le produit à l'acheteur.\n` +
         `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
-        `${e("info")}La libération des fonds vers le vendeur sera effectuée après confirmation.`
+        `${walletLine}`
     )
+  );
+
+  const walletButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
+      .setLabel(deal.seller_wallet ? "Modifier mon adresse" : "Adresse de retrait")
+      .setStyle(ButtonStyle.Secondary),
+    "wallet"
   );
 
   const releaseButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_release:${deal.deal_code}`)
       .setLabel("Produit reçu — libérer")
-      .setStyle(ButtonStyle.Success),
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!deal.seller_wallet),
     "release"
   );
 
@@ -232,7 +245,7 @@ function buildFundsHeldContainer(deal) {
   );
 
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(releaseButton, disputeButton)
+    new ActionRowBuilder().addComponents(walletButton, releaseButton, disputeButton)
   );
 
   return container;
@@ -242,12 +255,33 @@ function buildReleasedContainer(deal) {
   const container = new ContainerBuilder();
   addStandardHeader(container, deal);
 
+  const payoutStatus = deal.payout_status || "unknown";
+  const wallet = deal.seller_wallet || "—";
+  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+
+  let payoutText;
+  if (payoutStatus === "awaiting_2fa") {
+    payoutText =
+      `${e("warning")}Payout créé mais en attente de validation 2FA sur NOWPayments.\n` +
+      `${e("staff")}Validez le payout dans le dashboard Custody / Mass Payouts.`;
+  } else if (deal.payout_error) {
+    payoutText =
+      `${e("error")}Échec du payout automatique : \`${deal.payout_error}\`\n` +
+      `${e("staff")}Libérez manuellement depuis Custody vers \`${wallet}\`.`;
+  } else {
+    payoutText =
+      `${e("success")}Payout initié vers le vendeur.\n` +
+      `${e("wallet")}\`${wallet}\`\n` +
+      `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
+      `${e("clock")}**Statut payout** — ${statusLabel(payoutStatus)}`;
+  }
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("release")}Deal terminé\n` +
-        `${e("success")}L'acheteur a confirmé la réception du produit.\n` +
-        `${e("money")}Les fonds peuvent être libérés au vendeur <@${deal.seller_id}>.\n\n` +
-        `${e("staff")}Le staff peut maintenant fermer ce salon.`
+        `${e("success")}L'acheteur a confirmé la réception du produit.\n\n` +
+        `${payoutText}\n\n` +
+        `${e("staff")}Le staff peut fermer ce salon une fois le payout confirmé.`
     )
   );
 
