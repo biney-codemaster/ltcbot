@@ -4,7 +4,6 @@ const { createDealChannel } = require("../utils/dealChannel");
 const { generateUniqueDealCode } = require("../utils/dealCode");
 const { buildRoleSelectionContainer } = require("../utils/dealContainer");
 const { fiatToLtc } = require("../utils/ltcPrice");
-const { assertAboveMinAmount } = require("../utils/oxapay");
 const { MessageFlags } = require("discord.js");
 
 const { e } = config;
@@ -78,19 +77,6 @@ async function handleDealModal(interaction) {
       content: `${e("error")}Crypto non supportée pour le moment. Choisis Litecoin (LTC).`,
       flags: MessageFlags.Ephemeral,
     });
-  }
-
-  // --- Minimum OxaPay (~0.002 LTC, bloquant si cours dispo) ---
-  try {
-    await assertAboveMinAmount({ price, currency, crypto });
-  } catch (err) {
-    if (err.code === "BELOW_MINIMUM") {
-      return interaction.reply({
-        content: `${e("error")}${err.message}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-    console.warn("Min-amount check au formulaire:", err.message);
   }
 
   // --- Conversion fiat -> crypto pour affichage (non bloquant si API down) ---

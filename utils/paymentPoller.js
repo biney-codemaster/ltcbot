@@ -6,12 +6,11 @@ const {
   isFailedStatus,
   statusLabel,
   resolvePayoutAmount,
-} = require("./oxapay");
+} = require("./ltcWallet");
 const {
   buildPaymentContainer,
   buildFundsHeldContainer,
   buildPaymentFailedContainer,
-  buildReleasedContainer,
 } = require("./dealContainer");
 const { MessageFlags } = require("discord.js");
 
@@ -57,7 +56,7 @@ function getPendingPayoutDeals() {
          AND payout_id IS NOT NULL
          AND payout_id != ''
          AND payout_status IS NOT NULL
-         AND payout_status NOT IN ('finished', 'confirmed', 'failed', 'rejected', 'expired', 'canceled')`
+         AND payout_status NOT IN ('finished', 'confirmed', 'completed', 'done', 'failed', 'rejected', 'expired', 'canceled', 'error')`
     )
     .all();
 }

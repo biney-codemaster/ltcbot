@@ -23,7 +23,7 @@ const {
   payoutToSeller,
   isValidLtcAddress,
   getPaymentStatus,
-} = require("../utils/oxapay");
+} = require("../utils/ltcWallet");
 const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/paymentPoller");
 const { formatLtcAmount } = require("../utils/ltcPrice");
 
@@ -165,7 +165,7 @@ async function handleConfirmButton(interaction, dealCode) {
     try {
       await createAndSendPayment(interaction.channel, updatedDeal);
     } catch (err) {
-      console.error("Création paiement OxaPay:", err.message);
+      console.error("Création paiement wallet LTC:", err.message);
       db.prepare(
         `UPDATE deals
          SET status = 'payment_failed', updated_at = datetime('now')
@@ -569,7 +569,7 @@ async function handleStaffResolveButton(interaction, dealCode) {
   await interaction.channel.send({
     content:
       `${e("staff")}Litige #${dealCode} clôturé par <@${interaction.user.id}>.\n` +
-      `${e("warning")}Aucun payout auto n'a été déclenché — gérez un éventuel remboursement depuis OxaPay.`,
+      `${e("warning")}Aucun payout auto n'a été déclenché — vérifiez la seed wallet et l'adresse escrow du deal.`,
   });
   await interaction.channel.send({
     components: [buildCloseTicketContainer(getDealByCode(dealCode), interaction.user.id)],

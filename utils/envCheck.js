@@ -14,12 +14,9 @@ function validateEnv() {
   if (!process.env.STAFF_ROLE_ID) {
     warnings.push("STAFF_ROLE_ID vide → le staff n'aura pas accès aux salons / fermetures");
   }
-  if (!process.env.OXAPAY_MERCHANT_API_KEY) {
-    errors.push("OXAPAY_MERCHANT_API_KEY manquant (création d'adresses LTC impossible)");
-  }
-  if (!process.env.OXAPAY_PAYOUT_API_KEY) {
+  if (!process.env.LTC_WALLET_MNEMONIC) {
     warnings.push(
-      "OXAPAY_PAYOUT_API_KEY manquant → payout vendeur impossible (libération des fonds)"
+      "LTC_WALLET_MNEMONIC vide → le bot utilisera / créera wallet.mnemonic (SAUVEGARDE-LE)"
     );
   }
 

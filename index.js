@@ -35,6 +35,7 @@ const {
 require("./database"); // initialise la DB au démarrage
 const { startPaymentPoller } = require("./utils/paymentPoller");
 const { logEnvValidation } = require("./utils/envCheck");
+const { pingWallet, loadOrCreateMnemonic } = require("./utils/ltcWallet");
 
 if (!logEnvValidation()) {
   process.exit(1);
@@ -137,10 +138,17 @@ function buildDealModal() {
   return modal;
 }
 
-client.once(Events.ClientReady, () => {
+client.once(Events.ClientReady, async () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
+  try {
+    loadOrCreateMnemonic();
+    const probe = await pingWallet();
+    console.log(`Wallet LTC OK (probe ${probe.probe_address}).`);
+  } catch (err) {
+    console.error("Wallet LTC KO au démarrage:", err.message);
+  }
   startPaymentPoller(client);
-  console.log("Polling OxaPay démarré (30s).");
+  console.log("Polling wallet LTC démarré (30s).");
 });
 
 client.on("interactionCreate", async (interaction) => {
