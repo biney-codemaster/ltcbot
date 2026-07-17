@@ -14,13 +14,8 @@ function validateEnv() {
   if (!process.env.STAFF_ROLE_ID) {
     warnings.push("STAFF_ROLE_ID vide → le staff n'aura pas accès aux salons / fermetures");
   }
-  if (!process.env.OXAPAY_MERCHANT_API_KEY) {
-    errors.push("OXAPAY_MERCHANT_API_KEY manquant (création d'adresses LTC impossible)");
-  }
-  if (!process.env.OXAPAY_PAYOUT_API_KEY) {
-    warnings.push(
-      "OXAPAY_PAYOUT_API_KEY manquant → payout vendeur impossible (libération des fonds)"
-    );
+  if (!process.env.PLISIO_API_KEY) {
+    errors.push("PLISIO_API_KEY manquant (création d'adresses LTC impossible)");
   }
 
   return { ok: errors.length === 0, errors, warnings };

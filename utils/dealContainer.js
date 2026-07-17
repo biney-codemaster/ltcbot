@@ -9,7 +9,7 @@ const {
 } = require("discord.js");
 const config = require("../config");
 const { formatLtcAmount } = require("./ltcPrice");
-const { statusLabel } = require("./oxapay");
+const { statusLabel } = require("./plisio");
 
 const { e, emojis } = config;
 
@@ -211,7 +211,7 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   addStandardHeader(container, deal);
 
   const isMin =
-    /Bloqué par l'API OxaPay|montant trop|too small|minimum|BELOW_MINIMUM/i.test(
+    /Bloqué par l'API Plisio|montant trop|too small|minimum|BELOW_MINIMUM/i.test(
       String(errorMessage || "")
     );
 
@@ -220,8 +220,8 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
       `## ${e("error")}Adresse de paiement indisponible\n` +
         `Erreur : \`${errorMessage || "inconnue"}\`\n\n` +
         (isMin
-          ? `${e("info")}Montant sous le minimum OxaPay (≈ 0.002 LTC). Augmente légèrement le prix du deal.`
-          : `${e("next")}Réessayez une fois la config OxaPay corrigée (Merchant / Payout API keys).`)
+          ? `${e("info")}Montant sous le minimum Plisio. Augmente légèrement le prix du deal.`
+          : `${e("next")}Réessayez une fois la config Plisio corrigée (PLISIO_API_KEY, White-label, IP).`)
     )
   );
 
@@ -287,7 +287,7 @@ function buildFundsHeldContainer(deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("shield")}Fonds sécurisés\n` +
-        `${e("success")}Le paiement a été reçu et est conservé sur le **solde OxaPay** (escrow).\n\n` +
+        `${e("success")}Le paiement a été reçu et est conservé sur le **solde Plisio** (escrow).\n\n` +
         `${e("seller")}<@${deal.seller_id}> — livrez le produit à l'acheteur.\n` +
         `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
         `${walletLine}${payoutErrorLine}`
@@ -338,7 +338,7 @@ function buildReleasedContainer(deal) {
   if (deal.payout_error) {
     payoutText =
       `${e("error")}Échec du payout automatique : \`${deal.payout_error}\`\n` +
-      `${e("staff")}Libérez manuellement depuis le dashboard OxaPay vers \`${wallet}\`.`;
+      `${e("staff")}Libérez manuellement depuis le dashboard Plisio vers \`${wallet}\`.`;
   } else {
     payoutText =
       `${e("success")}Payout initié vers le vendeur.\n` +

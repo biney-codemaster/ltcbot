@@ -26,8 +26,8 @@ db.exec(`
     currency TEXT NOT NULL,       -- '€' ou '$'
     crypto TEXT NOT NULL DEFAULT 'LTC', -- crypto choisie pour le paiement (LTC pour l'instant)
 
-    -- Paiement crypto (OxaPay track_id)
-    payment_id TEXT,              -- track_id OxaPay
+    -- Paiement crypto (Plisio txn_id)
+    payment_id TEXT,              -- txn_id Plisio
     pay_address TEXT,             -- adresse LTC générée pour ce deal
     pay_amount REAL,              -- montant équivalent en crypto (estimé à la création)
     paid_at TEXT,                 -- date de réception du paiement
