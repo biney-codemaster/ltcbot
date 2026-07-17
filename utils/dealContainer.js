@@ -37,10 +37,17 @@ function dealTitle(deal) {
   return `# ${e("deal")}Deal #${deal.deal_code}`;
 }
 
-function dealOverview(deal) {
+function dealOverview(deal, { preferRoles = false } = {}) {
+  const people =
+    preferRoles && deal.buyer_id && deal.seller_id
+      ? `## ${e("roles")}Rôles\n` +
+        `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
+        `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n\n`
+      : `## ${e("users")}Participants\n` +
+        `<@${deal.initiator_id}> ↔ <@${deal.partner_id}>\n\n`;
+
   return (
-    `## ${e("users")}Participants\n` +
-    `<@${deal.initiator_id}> ↔ <@${deal.partner_id}>\n\n` +
+    people +
     `## ${e("product")}Détails\n` +
     `**Produit** — ${deal.product}\n` +
     `**Prix** — ${deal.price}${deal.currency}\n` +
@@ -48,12 +55,14 @@ function dealOverview(deal) {
   );
 }
 
-function addStandardHeader(container, deal) {
+function addStandardHeader(container, deal, opts = {}) {
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealTitle(deal)));
   container.addSeparatorComponents(
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
   );
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealOverview(deal)));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(dealOverview(deal, opts))
+  );
   container.addSeparatorComponents(
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
   );
@@ -179,7 +188,7 @@ function buildPaymentContainer(deal) {
         `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
         (rateTxt ? `${e("money")}**Cours** — ${rateTxt}\n` : "") +
         `${e("money")}**Prix deal** — ${deal.price}${deal.currency}\n` +
-        `${e("wallet")}**Adresse**\n\`\`\`\n${address}\n\`\`\`\n` +
+        `${e("wallet")}**Adresse** — \`${address}\`\n` +
         `${e("clock")}**Statut** — ${status}\n\n` +
         `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`
     )
@@ -190,7 +199,7 @@ function buildPaymentContainer(deal) {
       applyEmoji(
         new ButtonBuilder()
           .setCustomId(`deal_check_payment:${deal.deal_code}`)
-          .setLabel("Vérifier (acheteur)")
+          .setLabel("Vérifier le paiement")
           .setStyle(ButtonStyle.Primary),
         "payment"
       ),
@@ -229,7 +238,7 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   const retryButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_regen_payment:${deal.deal_code}`)
-      .setLabel("Régénérer (acheteur)")
+      .setLabel("Régénérer l'adresse")
       .setStyle(ButtonStyle.Primary),
     "payment"
   );
@@ -253,7 +262,7 @@ function buildPaymentFailedContainer(deal, reason) {
   const retryButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_regen_payment:${deal.deal_code}`)
-      .setLabel("Nouvelle adresse (acheteur)")
+      .setLabel("Nouvelle adresse")
       .setStyle(ButtonStyle.Primary),
     "payment"
   );
@@ -298,7 +307,7 @@ function buildFundsHeldContainer(deal) {
   const walletButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
-      .setLabel(deal.seller_wallet ? "Modifier adresse (vendeur)" : "Adresse retrait (vendeur)")
+      .setLabel(deal.seller_wallet ? "Modifier mon adresse" : "Adresse de retrait")
       .setStyle(ButtonStyle.Secondary),
     "wallet"
   );
@@ -306,7 +315,7 @@ function buildFundsHeldContainer(deal) {
   const releaseButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_release:${deal.deal_code}`)
-      .setLabel(deal.payout_error ? "Réessayer libération (acheteur)" : "Libérer (acheteur)")
+      .setLabel(deal.payout_error ? "Réessayer la libération" : "Produit reçu — libérer")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!deal.seller_wallet),
     "release"
@@ -329,11 +338,13 @@ function buildFundsHeldContainer(deal) {
 
 function buildReleasedContainer(deal) {
   const container = new ContainerBuilder();
-  addStandardHeader(container, deal);
+  addStandardHeader(container, deal, { preferRoles: true });
 
   const payoutStatus = deal.payout_status || "unknown";
   const wallet = deal.seller_wallet || "—";
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const txid = deal.payout_id || null;
+  const explorerUrl = txid ? `https://litecoinspace.org/tx/${txid}` : null;
 
   let payoutText;
   if (deal.payout_error) {
@@ -342,18 +353,49 @@ function buildReleasedContainer(deal) {
       `${e("staff")}Libérez manuellement depuis une wallet LTC avec la seed escrow vers \`${wallet}\`.`;
   } else {
     payoutText =
-      `${e("success")}Payout initié vers le vendeur.\n` +
-      `${e("wallet")}\`${wallet}\`\n` +
+      `${e("success")}Payout diffusé sur le réseau Litecoin.\n\n` +
+      `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n` +
+      `${e("wallet")}**Adresse** — \`${wallet}\`\n` +
       `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
-      `${e("clock")}**Statut payout** — ${statusLabel(payoutStatus)}`;
+      `${e("clock")}**Statut** — ${statusLabel(payoutStatus)}\n` +
+      (txid ? `${e("info")}**TXID** — \`${txid}\`\n` : "") +
+      (explorerUrl ? `${e("next")}[Voir la transaction](${explorerUrl})` : "");
   }
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("release")}Deal terminé\n` +
+      `## ${e("release")}Payout en cours\n` +
         `${e("success")}L'acheteur a confirmé la réception du produit.\n\n` +
         `${payoutText}\n\n` +
-        `${e("staff")}Le staff peut fermer ce salon une fois le payout confirmé.`
+        `${e("clock")}En attente de confirmation blockchain…`
+    )
+  );
+
+  return container;
+}
+
+function buildPayoutConfirmedContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal, { preferRoles: true });
+
+  const wallet = deal.seller_wallet || "—";
+  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const txid = deal.payout_id || "—";
+  const explorerUrl =
+    deal.payout_id && /^[a-f0-9]{64}$/i.test(deal.payout_id)
+      ? `https://litecoinspace.org/tx/${deal.payout_id}`
+      : null;
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("success")}Paiement envoyé\n` +
+        `${e("release")}Les fonds ont été **confirmés** sur la blockchain Litecoin.\n\n` +
+        `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n` +
+        `${e("wallet")}**Adresse** — \`${wallet}\`\n` +
+        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
+        `${e("info")}**TXID** — \`${txid}\`\n` +
+        (explorerUrl ? `${e("next")}[Voir la transaction](${explorerUrl})\n\n` : "\n") +
+        `${e("staff")}Le staff peut fermer ce salon.`
     )
   );
 
@@ -371,7 +413,7 @@ function buildReleasedContainer(deal) {
 
 function buildDisputeContainer(deal, openedBy) {
   const container = new ContainerBuilder();
-  addStandardHeader(container, deal);
+  addStandardHeader(container, deal, { preferRoles: true });
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -451,6 +493,7 @@ module.exports = {
   buildPaymentFailedContainer,
   buildFundsHeldContainer,
   buildReleasedContainer,
+  buildPayoutConfirmedContainer,
   buildDisputeContainer,
   buildCloseTicketContainer,
 };

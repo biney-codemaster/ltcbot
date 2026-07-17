@@ -6,13 +6,17 @@ const {
   isFailedStatus,
   statusLabel,
   resolvePayoutAmount,
+  isPayoutDoneStatus,
+  isPayoutFailedStatus,
 } = require("./ltcWallet");
 const {
   buildPaymentContainer,
   buildFundsHeldContainer,
   buildPaymentFailedContainer,
+  buildPayoutConfirmedContainer,
 } = require("./dealContainer");
 const { MessageFlags } = require("discord.js");
+const { e } = require("../config");
 
 const POLL_INTERVAL_MS = 30_000;
 /** @type {import('discord.js').Client | null} */
@@ -132,6 +136,10 @@ async function refreshDealPayout(deal) {
   try {
     const payout = await getPayoutStatus(deal.payout_id);
     const payoutStatus = payout.status || deal.payout_status;
+    const prevStatus = deal.payout_status;
+
+    // Pas de changement → silence (évite le spam processing)
+    if (payoutStatus === prevStatus) return deal;
 
     db.prepare(
       `UPDATE deals
@@ -141,13 +149,27 @@ async function refreshDealPayout(deal) {
 
     const updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
 
-    if (deal.channel_id) {
+    const newlyConfirmed =
+      isPayoutDoneStatus(payoutStatus) && !isPayoutDoneStatus(prevStatus);
+    const newlyFailed =
+      isPayoutFailedStatus(payoutStatus) && !isPayoutFailedStatus(prevStatus);
+
+    if ((newlyConfirmed || newlyFailed) && deal.channel_id) {
       try {
         const channel = await client.channels.fetch(deal.channel_id);
         if (channel?.isTextBased()) {
-          await channel.send({
-            content: `Payout #${deal.deal_code} → statut **${payoutStatus}**`,
-          }).catch(() => {});
+          if (newlyConfirmed) {
+            await channel.send({
+              components: [buildPayoutConfirmedContainer(updated)],
+              flags: MessageFlags.IsComponentsV2,
+            });
+          } else {
+            await channel.send({
+              content:
+                `${e("error")}Payout #${deal.deal_code} échoué — statut **${payoutStatus}**. ` +
+                `TXID : \`${deal.payout_id}\``,
+            }).catch(() => {});
+          }
         }
       } catch {
         // ignore
