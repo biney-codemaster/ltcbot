@@ -139,11 +139,33 @@ async function getPaymentStatus(paymentId) {
   return nowpaymentsRequest("GET", `/payment/${paymentId}`);
 }
 
+async function getPayoutStatus(payoutId) {
+  const token = await authenticate();
+  return nowpaymentsRequest("GET", `/payout/${payoutId}`, null, { bearer: token });
+}
+
+/**
+ * Montant LTC réellement à envoyer au vendeur (préfère le montant reçu).
+ */
+function resolvePayoutAmount(deal, paymentDetails) {
+  const candidates = [
+    paymentDetails?.outcome_amount,
+    paymentDetails?.actually_paid,
+    paymentDetails?.pay_amount,
+    deal.pay_amount,
+  ];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
 /**
  * Envoie le LTC du Custody vers l'adresse du vendeur.
- * @returns {{ payoutId: string, status: string, raw: object }}
+ * @returns {{ payoutId: string, status: string, raw: object, warning?: string }}
  */
-async function payoutToSeller(deal) {
+async function payoutToSeller(deal, paymentDetails) {
   if (!deal.seller_wallet) {
     throw new Error("Adresse LTC du vendeur manquante");
   }
@@ -151,7 +173,7 @@ async function payoutToSeller(deal) {
     throw new Error("Adresse LTC du vendeur invalide");
   }
 
-  const amount = Number(deal.pay_amount);
+  const amount = resolvePayoutAmount(deal, paymentDetails);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error("Montant crypto invalide pour le payout");
   }
@@ -165,7 +187,7 @@ async function payoutToSeller(deal) {
         address: deal.seller_wallet.trim(),
         currency,
         amount,
-        unique_id: `escrow-${deal.deal_code}`,
+        unique_id: `escrow-${deal.deal_code}-${Date.now()}`,
       },
     ],
   };
@@ -178,7 +200,6 @@ async function payoutToSeller(deal) {
   const payoutId = String(created.id || created.batch_withdrawal_id || "");
   let status = created.withdrawals?.[0]?.status || created.status || "creating";
 
-  // Si 2FA activé sur le compte, tenter une vérif auto via secret TOTP
   const totpCode = generateTotpCode();
   if (payoutId && totpCode) {
     try {
@@ -191,7 +212,6 @@ async function payoutToSeller(deal) {
       );
       status = "processing";
     } catch (err) {
-      // Payout créé mais non vérifié — le staff pourra valider dans le dashboard
       console.error(`Vérification 2FA payout #${payoutId}:`, err.message);
       return {
         payoutId,
@@ -200,9 +220,8 @@ async function payoutToSeller(deal) {
         warning: err.message,
       };
     }
-  } else if (payoutId && !totpCode && config.nowpaymentsEmail) {
-    // Pas de secret 2FA: le payout peut rester en attente de validation manuelle
-    status = status || "awaiting_2fa";
+  } else if (payoutId && !totpCode) {
+    status = status === "creating" || status === "waiting" ? "awaiting_2fa" : status;
   }
 
   return { payoutId, status, raw: created };
@@ -223,8 +242,10 @@ function isFailedStatus(status) {
 module.exports = {
   createLtcPayment,
   getPaymentStatus,
+  getPayoutStatus,
   payoutToSeller,
   authenticate,
+  resolvePayoutAmount,
   statusLabel,
   isPaidStatus,
   isActiveStatus,

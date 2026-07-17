@@ -182,7 +182,42 @@ function buildPaymentContainer(deal) {
     "payment"
   );
 
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(checkButton));
+  const disputeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_dispute:${deal.deal_code}`)
+      .setLabel("Ouvrir un litige")
+      .setStyle(ButtonStyle.Danger),
+    "dispute"
+  );
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(checkButton, disputeButton)
+  );
+  return container;
+}
+
+/** Affiché si la création d'invoice a échoué (retry possible). */
+function buildPaymentSetupErrorContainer(deal, errorMessage) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("error")}Adresse de paiement indisponible\n` +
+        `Erreur : \`${errorMessage || "inconnue"}\`\n\n` +
+        `${e("next")}Réessayez la génération une fois la config NOWPayments corrigée.`
+    )
+  );
+
+  const retryButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_regen_payment:${deal.deal_code}`)
+      .setLabel("Régénérer l'adresse")
+      .setStyle(ButtonStyle.Primary),
+    "payment"
+  );
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(retryButton));
   return container;
 }
 
@@ -194,8 +229,28 @@ function buildPaymentFailedContainer(deal, reason) {
     new TextDisplayBuilder().setContent(
       `## ${e("error")}Paiement non finalisé\n` +
         `Statut : **${reason}**\n\n` +
-        `${e("staff")}Contactez le staff si vous avez déjà envoyé des fonds.`
+        `${e("next")}Vous pouvez générer une nouvelle adresse, ou contacter le staff si des fonds ont déjà été envoyés.`
     )
+  );
+
+  const retryButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_regen_payment:${deal.deal_code}`)
+      .setLabel("Nouvelle adresse")
+      .setStyle(ButtonStyle.Primary),
+    "payment"
+  );
+
+  const disputeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_dispute:${deal.deal_code}`)
+      .setLabel("Ouvrir un litige")
+      .setStyle(ButtonStyle.Danger),
+    "dispute"
+  );
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(retryButton, disputeButton)
   );
 
   return container;
@@ -209,13 +264,17 @@ function buildFundsHeldContainer(deal) {
     ? `${e("wallet")}**Adresse vendeur** — \`${deal.seller_wallet}\``
     : `${e("warning")}**Adresse vendeur** — non renseignée (obligatoire avant libération)`;
 
+  const payoutErrorLine = deal.payout_error
+    ? `\n\n${e("error")}**Dernier payout échoué** — \`${deal.payout_error}\`\nVous pouvez réessayer la libération.`
+    : "";
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("shield")}Fonds sécurisés\n` +
         `${e("success")}Le paiement a été reçu et est conservé en **Custody** NOWPayments (escrow).\n\n` +
         `${e("seller")}<@${deal.seller_id}> — livrez le produit à l'acheteur.\n` +
         `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
-        `${walletLine}`
+        `${walletLine}${payoutErrorLine}`
     )
   );
 
@@ -230,7 +289,7 @@ function buildFundsHeldContainer(deal) {
   const releaseButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_release:${deal.deal_code}`)
-      .setLabel("Produit reçu — libérer")
+      .setLabel(deal.payout_error ? "Réessayer la libération" : "Produit reçu — libérer")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!deal.seller_wallet),
     "release"
@@ -306,8 +365,25 @@ function buildDisputeContainer(deal, openedBy) {
       `## ${e("dispute")}Litige ouvert\n` +
         `Ouvert par <@${openedBy}>.\n\n` +
         `**Motif**\n${deal.dispute_reason || "*non précisé*"}\n\n` +
-        `${e("staff")}Un médiateur doit intervenir avant toute libération des fonds.`
+        `${e("staff")}Un médiateur doit trancher : libérer au vendeur, ou clôturer sans payout auto.`
     )
+  );
+
+  const releaseButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_staff_release:${deal.deal_code}`)
+      .setLabel("Staff: libérer vendeur")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!deal.seller_wallet),
+    "release"
+  );
+
+  const resolveButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_staff_resolve:${deal.deal_code}`)
+      .setLabel("Staff: clôturer litige")
+      .setStyle(ButtonStyle.Secondary),
+    "staff"
   );
 
   const closeButton = applyEmoji(
@@ -318,7 +394,9 @@ function buildDisputeContainer(deal, openedBy) {
     "close"
   );
 
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(releaseButton, resolveButton, closeButton)
+  );
   return container;
 }
 
@@ -356,6 +434,7 @@ module.exports = {
   buildConfirmationContainer,
   buildFinalRecapContainer,
   buildPaymentContainer,
+  buildPaymentSetupErrorContainer,
   buildPaymentFailedContainer,
   buildFundsHeldContainer,
   buildReleasedContainer,

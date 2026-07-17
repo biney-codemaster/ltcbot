@@ -8,6 +8,7 @@ const {
   SeparatorBuilder,
   SeparatorSpacingSize,
   MessageFlags,
+  PermissionFlagsBits,
 } = require("discord.js");
 const config = require("../config");
 
@@ -15,7 +16,8 @@ const { e, emojis } = config;
 
 const data = new SlashCommandBuilder()
   .setName("setup")
-  .setDescription("Affiche le panneau pour démarrer un deal en escrow");
+  .setDescription("Affiche le panneau pour démarrer un deal en escrow")
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
 
 function buildSetupContainer() {
   const container = new ContainerBuilder();
@@ -31,12 +33,12 @@ function buildSetupContainer() {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `${e("shield")}Intermédiaire de confiance entre **acheteur** et **vendeur**.\n` +
-        `Les fonds sont sécurisés jusqu'à confirmation de réception du produit.\n\n` +
+        `Les fonds sont sécurisés en Custody jusqu'à confirmation de réception.\n\n` +
         `## ${e("info")}Déroulement\n` +
         `1. Création du deal et salon privé\n` +
         `2. Choix des rôles (acheteur / vendeur)\n` +
         `3. Confirmation mutuelle des termes\n` +
-        `4. Paiement crypto puis libération des fonds`
+        `4. Paiement LTC puis libération vers le vendeur`
     )
   );
 
@@ -66,6 +68,13 @@ function buildSetupContainer() {
 }
 
 async function execute(interaction) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    return interaction.reply({
+      content: `${e("error")}Permission refusée. Il faut **Gérer le serveur**.`,
+      ephemeral: true,
+    });
+  }
+
   const container = buildSetupContainer();
   await interaction.reply({
     components: [container],

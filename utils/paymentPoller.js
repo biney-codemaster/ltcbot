@@ -1,9 +1,17 @@
 const db = require("../database");
-const { getPaymentStatus, isPaidStatus, isFailedStatus, statusLabel } = require("./nowpayments");
+const {
+  getPaymentStatus,
+  getPayoutStatus,
+  isPaidStatus,
+  isFailedStatus,
+  statusLabel,
+  resolvePayoutAmount,
+} = require("./nowpayments");
 const {
   buildPaymentContainer,
   buildFundsHeldContainer,
   buildPaymentFailedContainer,
+  buildReleasedContainer,
 } = require("./dealContainer");
 const { MessageFlags } = require("discord.js");
 
@@ -17,12 +25,12 @@ function startPaymentPoller(discordClient) {
   client = discordClient;
   if (timer) return;
   timer = setInterval(() => {
-    pollActivePayments().catch((err) => {
-      console.error("Erreur polling paiements:", err.message);
+    Promise.all([pollActivePayments(), pollActivePayouts()]).catch((err) => {
+      console.error("Erreur polling:", err.message);
     });
   }, POLL_INTERVAL_MS);
-  // Premier passage rapide au démarrage
   pollActivePayments().catch(() => {});
+  pollActivePayouts().catch(() => {});
 }
 
 function stopPaymentPoller() {
@@ -41,11 +49,25 @@ function getAwaitingDeals() {
     .all();
 }
 
+function getPendingPayoutDeals() {
+  return db
+    .prepare(
+      `SELECT * FROM deals
+       WHERE status = 'released'
+         AND payout_id IS NOT NULL
+         AND payout_id != ''
+         AND payout_status IS NOT NULL
+         AND payout_status NOT IN ('finished', 'failed', 'rejected', 'expired')`
+    )
+    .all();
+}
+
 async function refreshDealPayment(deal) {
   if (!deal?.payment_id || !client) return deal;
 
   const payment = await getPaymentStatus(deal.payment_id);
   const paymentStatus = payment.payment_status;
+  const resolvedAmount = resolvePayoutAmount(deal, payment);
 
   db.prepare(
     `UPDATE deals
@@ -56,7 +78,7 @@ async function refreshDealPayment(deal) {
      WHERE deal_code = @deal_code`
   ).run({
     payment_status: paymentStatus,
-    pay_amount: payment.pay_amount != null ? Number(payment.pay_amount) : null,
+    pay_amount: resolvedAmount,
     pay_address: payment.pay_address || null,
     deal_code: deal.deal_code,
   });
@@ -69,21 +91,73 @@ async function refreshDealPayment(deal) {
        SET status = 'funds_held',
            paid_at = datetime('now'),
            payment_status = @payment_status,
+           pay_amount = COALESCE(@pay_amount, pay_amount),
            updated_at = datetime('now')
        WHERE deal_code = @deal_code`
-    ).run({ payment_status: paymentStatus, deal_code: deal.deal_code });
+    ).run({
+      payment_status: paymentStatus,
+      pay_amount: resolvedAmount,
+      deal_code: deal.deal_code,
+    });
     updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
     await publishFundsHeld(updated);
     return updated;
   }
 
   if (isFailedStatus(paymentStatus) && updated.status === "awaiting_payment") {
-    await updatePaymentMessage(updated, buildPaymentFailedContainer(updated, statusLabel(paymentStatus)));
+    db.prepare(
+      `UPDATE deals
+       SET status = 'payment_failed',
+           payment_status = @payment_status,
+           updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({ payment_status: paymentStatus, deal_code: deal.deal_code });
+    updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
+    await updatePaymentMessage(
+      updated,
+      buildPaymentFailedContainer(updated, statusLabel(paymentStatus))
+    );
     return updated;
   }
 
   await updatePaymentMessage(updated, buildPaymentContainer(updated));
   return updated;
+}
+
+async function refreshDealPayout(deal) {
+  if (!deal?.payout_id || !client) return deal;
+
+  try {
+    const payout = await getPayoutStatus(deal.payout_id);
+    const withdrawal = payout.withdrawals?.[0] || payout;
+    const payoutStatus = withdrawal.status || payout.status || deal.payout_status;
+
+    db.prepare(
+      `UPDATE deals
+       SET payout_status = @payout_status, updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({ payout_status: payoutStatus, deal_code: deal.deal_code });
+
+    const updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
+
+    if (deal.channel_id) {
+      try {
+        const channel = await client.channels.fetch(deal.channel_id);
+        if (channel?.isTextBased()) {
+          await channel.send({
+            content: `Payout #${deal.deal_code} → statut **${payoutStatus}**`,
+          }).catch(() => {});
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return updated;
+  } catch (err) {
+    console.error(`Polling payout #${deal.deal_code}:`, err.message);
+    return deal;
+  }
 }
 
 async function publishFundsHeld(deal) {
@@ -97,7 +171,9 @@ async function publishFundsHeld(deal) {
       try {
         const msg = await channel.messages.fetch(deal.payment_message_id);
         await msg.edit({
-          components: [buildPaymentContainer({ ...deal, payment_status: deal.payment_status || "finished" })],
+          components: [
+            buildPaymentContainer({ ...deal, payment_status: deal.payment_status || "finished" }),
+          ],
           flags: MessageFlags.IsComponentsV2,
         });
       } catch {
@@ -105,10 +181,14 @@ async function publishFundsHeld(deal) {
       }
     }
 
-    await channel.send({
+    const fundsMsg = await channel.send({
       components: [buildFundsHeldContainer(deal)],
       flags: MessageFlags.IsComponentsV2,
     });
+
+    db.prepare(
+      `UPDATE deals SET funds_held_message_id = @id WHERE deal_code = @deal_code`
+    ).run({ id: fundsMsg.id, deal_code: deal.deal_code });
   } catch (err) {
     console.error(`Impossible de publier funds_held pour #${deal.deal_code}:`, err.message);
   }
@@ -126,10 +206,26 @@ async function updatePaymentMessage(deal, container) {
       flags: MessageFlags.IsComponentsV2,
     });
   } catch (err) {
-    // silencieux: salon/message peut avoir disparu
     if (err.code !== 10008 && err.code !== 10003) {
       console.error(`Maj message paiement #${deal.deal_code}:`, err.message);
     }
+  }
+}
+
+async function updateFundsHeldMessage(deal) {
+  if (!client || !deal.channel_id || !deal.funds_held_message_id) return false;
+
+  try {
+    const channel = await client.channels.fetch(deal.channel_id);
+    if (!channel?.isTextBased()) return false;
+    const msg = await channel.messages.fetch(deal.funds_held_message_id);
+    await msg.edit({
+      components: [buildFundsHeldContainer(deal)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -144,9 +240,20 @@ async function pollActivePayments() {
   }
 }
 
+async function pollActivePayouts() {
+  const deals = getPendingPayoutDeals();
+  for (const deal of deals) {
+    await refreshDealPayout(deal);
+  }
+}
+
 module.exports = {
   startPaymentPoller,
   stopPaymentPoller,
   refreshDealPayment,
+  refreshDealPayout,
   pollActivePayments,
+  pollActivePayouts,
+  updateFundsHeldMessage,
+  publishFundsHeld,
 };

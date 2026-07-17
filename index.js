@@ -20,15 +20,23 @@ const {
   handleWrongRolesButton,
   handleCancelButton,
   handleCheckPaymentButton,
+  handleRegenPaymentButton,
   handleReleaseButton,
   handleSellerWalletButton,
   handleSellerWalletModal,
   handleDisputeButton,
   handleDisputeModal,
+  handleStaffReleaseButton,
+  handleStaffResolveButton,
   handleCloseButton,
 } = require("./interactions/dealButtons");
 require("./database"); // initialise la DB au démarrage
 const { startPaymentPoller } = require("./utils/paymentPoller");
+const { logEnvValidation } = require("./utils/envCheck");
+
+if (!logEnvValidation()) {
+  process.exit(1);
+}
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
@@ -168,6 +176,11 @@ client.on("interactionCreate", async (interaction) => {
       await handleCheckPaymentButton(interaction, dealCode);
     }
 
+    if (interaction.isButton() && interaction.customId.startsWith("deal_regen_payment:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleRegenPaymentButton(interaction, dealCode);
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith("deal_release:")) {
       const [, dealCode] = interaction.customId.split(":");
       await handleReleaseButton(interaction, dealCode);
@@ -181,6 +194,16 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isButton() && interaction.customId.startsWith("deal_dispute:")) {
       const [, dealCode] = interaction.customId.split(":");
       await handleDisputeButton(interaction, dealCode);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("deal_staff_release:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleStaffReleaseButton(interaction, dealCode);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("deal_staff_resolve:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleStaffResolveButton(interaction, dealCode);
     }
 
     if (interaction.isButton() && interaction.customId.startsWith("deal_close:")) {

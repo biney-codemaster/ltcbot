@@ -79,17 +79,13 @@ async function handleDealModal(interaction) {
     });
   }
 
-  // --- Conversion fiat -> crypto pour affichage ---
+  // --- Conversion fiat -> crypto pour affichage (non bloquant si API down) ---
   let payAmount = null;
   try {
     const { cryptoAmount } = await fiatToLtc(price, currency);
     payAmount = cryptoAmount;
   } catch (err) {
-    console.error("Conversion LTC impossible:", err.message);
-    return interaction.reply({
-      content: `${e("warning")}Impossible de récupérer le cours LTC pour le moment. Réessaie dans quelques secondes.`,
-      ephemeral: true,
-    });
+    console.error("Conversion LTC affichage indisponible:", err.message);
   }
 
   // --- Génération du code de deal (6 caractères, unique) ---
