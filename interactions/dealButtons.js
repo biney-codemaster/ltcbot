@@ -24,7 +24,7 @@ const {
   isValidLtcAddress,
   getPaymentStatus,
 } = require("../utils/nowpayments");
-const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/paymentPoller");
+const { refreshDealPayment, updateFundsHeldMessage, publishFundsHeld } = require("../utils/paymentPoller");
 const { formatLtcAmount } = require("../utils/ltcPrice");
 
 const { e } = config;
@@ -42,7 +42,7 @@ function isStaff(member) {
 }
 
 function deny(interaction, message) {
-  return interaction.reply({ content: `${e("error")}${message}`, ephemeral: true });
+  return interaction.reply({ content: `${e("error")}${message}`, flags: MessageFlags.Ephemeral });
 }
 
 async function createAndSendPayment(channel, deal) {
@@ -247,7 +247,7 @@ async function handleCheckPaymentButton(interaction, dealCode) {
     return deny(interaction, "Aucun paiement n'a encore été généré.");
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
     const updated = await refreshDealPayment(deal);
@@ -274,6 +274,39 @@ async function handleCheckPaymentButton(interaction, dealCode) {
       content: `${e("error")}Impossible de vérifier le paiement : \`${err.message}\``,
     });
   }
+}
+
+async function handleMockPayButton(interaction, dealCode) {
+  if (!config.mockPayments) {
+    return deny(interaction, "Le mode test n'est pas activé (ESCROW_MOCK_PAYMENTS).");
+  }
+
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
+    return deny(interaction, "Ce deal ne te concerne pas.");
+  }
+  if (deal.status !== "awaiting_payment") {
+    return deny(interaction, "Ce deal n'attend pas de paiement.");
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  db.prepare(
+    `UPDATE deals
+     SET status = 'funds_held',
+         payment_status = 'finished',
+         paid_at = datetime('now'),
+         updated_at = datetime('now')
+     WHERE deal_code = ?`
+  ).run(dealCode);
+
+  const updated = getDealByCode(dealCode);
+  await publishFundsHeld(updated);
+
+  return interaction.editReply({
+    content: `${e("success")}Paiement simulé. Les fonds sont maintenant en escrow (mode test).`,
+  });
 }
 
 async function handleRegenPaymentButton(interaction, dealCode) {
@@ -339,7 +372,7 @@ async function handleReleaseButton(interaction, dealCode) {
     );
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
     const result = await runSellerPayout(deal);
@@ -461,7 +494,7 @@ async function handleSellerWalletModal(interaction) {
 
   await interaction.reply({
     content: `${e("success")}Adresse de retrait enregistrée : \`${wallet}\``,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 
   const updated = await updateFundsHeldMessage(updatedDeal);
@@ -602,6 +635,7 @@ module.exports = {
   handleWrongRolesButton,
   handleCancelButton,
   handleCheckPaymentButton,
+  handleMockPayButton,
   handleRegenPaymentButton,
   handleReleaseButton,
   handleSellerWalletButton,

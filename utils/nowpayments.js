@@ -115,12 +115,80 @@ function generateTotpCode() {
 /**
  * Crée un paiement LTC via NOWPayments pour un deal.
  */
+async function getMinPaymentAmount({ currencyFrom, currencyTo, fiatEquivalent, isFixedRate = true }) {
+  const params = new URLSearchParams({
+    currency_from: currencyFrom,
+    currency_to: currencyTo,
+    is_fixed_rate: String(!!isFixedRate),
+  });
+  if (fiatEquivalent) params.set("fiat_equivalent", fiatEquivalent);
+
+  return nowpaymentsRequest("GET", `/min-amount?${params.toString()}`);
+}
+
+async function assertAboveMinAmount(deal) {
+  const priceCurrency = fiatCurrencyCode(deal.currency);
+  const payCurrency = String(deal.crypto || "LTC").toLowerCase();
+  const price = Number(deal.price);
+
+  const minInfo = await getMinPaymentAmount({
+    currencyFrom: priceCurrency,
+    currencyTo: payCurrency,
+    fiatEquivalent: priceCurrency,
+    isFixedRate: true,
+  });
+
+  const minCrypto = Number(minInfo.min_amount);
+  const minFiat = Number(minInfo.fiat_equivalent);
+
+  // Estime le crypto via le prix deal / ou compare en fiat si dispo
+  if (Number.isFinite(minFiat) && minFiat > 0 && price < minFiat) {
+    const err = new Error(
+      `Montant trop petit pour NOWPayments. Minimum ≈ ${minFiat.toFixed(2)}${deal.currency} (deal: ${price}${deal.currency}). Augmente le prix du deal.`
+    );
+    err.code = "BELOW_MINIMUM";
+    err.minFiat = minFiat;
+    err.minCrypto = minCrypto;
+    throw err;
+  }
+
+  // Fallback: si pas de fiat_equivalent, on laisse l'API payment décider,
+  // mais on améliore le message d'erreur côté create.
+  return minInfo;
+}
+
 async function createLtcPayment(deal) {
   const priceCurrency = fiatCurrencyCode(deal.currency);
   const payCurrency = String(deal.crypto || "LTC").toLowerCase();
+  const price = Number(deal.price);
+
+  // Mode test: pas d'appel NOWPayments (permet 0.05€ etc.)
+  if (config.mockPayments) {
+    const mockAmount =
+      Number.isFinite(Number(deal.pay_amount)) && Number(deal.pay_amount) > 0
+        ? Number(deal.pay_amount)
+        : Math.max(price / 80, 0.0001); // estimation grossière si pas de cours
+    return {
+      payment_id: `mock-${deal.deal_code}-${Date.now()}`,
+      pay_address: `ltc1MOCK${deal.deal_code.toLowerCase()}testdev000000000`,
+      pay_amount: mockAmount,
+      payment_status: "waiting",
+      pay_currency: payCurrency,
+      price_amount: price,
+      price_currency: priceCurrency,
+      mock: true,
+    };
+  }
+
+  try {
+    await assertAboveMinAmount(deal);
+  } catch (err) {
+    if (err.code === "BELOW_MINIMUM") throw err;
+    console.warn("Vérification min-amount impossible:", err.message);
+  }
 
   const payload = {
-    price_amount: Number(deal.price),
+    price_amount: price,
     price_currency: priceCurrency,
     pay_currency: payCurrency,
     order_id: deal.deal_code,
@@ -132,10 +200,31 @@ async function createLtcPayment(deal) {
     payload.ipn_callback_url = config.nowpaymentsIpnUrl;
   }
 
-  return nowpaymentsRequest("POST", "/payment", payload);
+  try {
+    return await nowpaymentsRequest("POST", "/payment", payload);
+  } catch (err) {
+    const raw = String(err.message || "");
+    if (/amountTo is too small|too small|minimum/i.test(raw)) {
+      const nicer = new Error(
+        `Montant trop petit pour un paiement ${payCurrency.toUpperCase()} sur NOWPayments. ` +
+          `Pour tester avec 0.05€, mets ESCROW_MOCK_PAYMENTS=true dans le .env. ` +
+          `Sinon augmente le prix. Détail: ${raw}`
+      );
+      nicer.code = "BELOW_MINIMUM";
+      throw nicer;
+    }
+    throw err;
+  }
 }
 
 async function getPaymentStatus(paymentId) {
+  if (config.mockPayments && String(paymentId).startsWith("mock-")) {
+    return {
+      payment_id: paymentId,
+      payment_status: "waiting",
+      mock: true,
+    };
+  }
   return nowpaymentsRequest("GET", `/payment/${paymentId}`);
 }
 
@@ -176,6 +265,14 @@ async function payoutToSeller(deal, paymentDetails) {
   const amount = resolvePayoutAmount(deal, paymentDetails);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error("Montant crypto invalide pour le payout");
+  }
+
+  if (config.mockPayments) {
+    return {
+      payoutId: `mock-payout-${deal.deal_code}-${Date.now()}`,
+      status: "finished",
+      raw: { mock: true, amount, address: deal.seller_wallet },
+    };
   }
 
   const token = await authenticate();
@@ -241,6 +338,8 @@ function isFailedStatus(status) {
 
 module.exports = {
   createLtcPayment,
+  getMinPaymentAmount,
+  assertAboveMinAmount,
   getPaymentStatus,
   getPayoutStatus,
   payoutToSeller,
