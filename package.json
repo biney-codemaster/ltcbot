@@ -1,10 +1,11 @@
 {
   "name": "escrow-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Discord Litecoin escrow bot",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "test": "node -e \"require('./utils/nowpayments'); require('./utils/paymentPoller'); require('./utils/dealContainer'); console.log('ok')\""
   },
   "keywords": [],
   "author": "",

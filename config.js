@@ -66,6 +66,8 @@ module.exports = {
   clientId: process.env.CLIENT_ID,
   guildId: process.env.GUILD_ID, // pour enregistrer les commandes en dev (instant), sinon global
   staffRoleId: process.env.STAFF_ROLE_ID, // rôle staff/médiateur ayant accès aux salons de deal
+  nowpaymentsApiKey: process.env.NOWPAYMENTS_API_KEY,
+  nowpaymentsIpnUrl: process.env.NOWPAYMENTS_IPN_URL || null, // optionnel (webhook public)
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages
