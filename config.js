@@ -61,17 +61,22 @@ function e(key) {
   return emojiText[key] ? `${emojiText[key]} ` : "";
 }
 
-function readChannelId(envKey) {
-  const raw = process.env[envKey];
-  if (raw == null) return null;
-  let s = String(raw).trim().replace(/^['"]+|['"]+$/g, "").trim();
-  if (!s) return null;
-  const mention = s.match(/^<#(\d{17,20})>$/);
-  if (mention) return mention[1];
-  s = s.replace(/[<#>]/g, "").trim();
-  if (/^\d{17,20}$/.test(s)) return s;
-  const embedded = s.match(/(\d{17,20})/);
-  return embedded ? embedded[1] : null;
+function readChannelId(...envKeys) {
+  for (const envKey of envKeys) {
+    const raw = process.env[envKey];
+    if (raw == null) continue;
+    let s = String(raw).trim().replace(/^['"]+|['"]+$/g, "").trim();
+    // enlève BOM / caractères invisibles fréquents
+    s = s.replace(/^\uFEFF/, "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+    if (!s) continue;
+    const mention = s.match(/^<#(\d{16,22})>$/);
+    if (mention) return mention[1];
+    s = s.replace(/[<#>]/g, "").trim();
+    if (/^\d{16,22}$/.test(s)) return s;
+    const embedded = s.match(/(\d{16,22})/);
+    if (embedded) return embedded[1];
+  }
+  return null;
 }
 
 module.exports = {
@@ -82,10 +87,22 @@ module.exports = {
   /** Seed BIP39 du wallet HD escrow (sinon fichier wallet.mnemonic auto-créé). */
   ltcWalletMnemonic: (process.env.LTC_WALLET_MNEMONIC || "").trim() || null,
 
-  /** Salons Discord (IDs numériques uniquement). */
-  adminLogsChannelId: readChannelId("ADMIN_LOGS_CHANNEL_ID"),
-  publicLogsChannelId: readChannelId("PUBLIC_LOGS_CHANNEL_ID"),
-  reviewsChannelId: readChannelId("REVIEWS_CHANNEL_ID"),
+  /** Salons Discord (IDs numériques). Alias acceptés pour éviter les typos .env */
+  adminLogsChannelId: readChannelId(
+    "ADMIN_LOGS_CHANNEL_ID",
+    "ADMIN_LOG_CHANNEL_ID",
+    "LOGS_ADMIN_CHANNEL_ID"
+  ),
+  publicLogsChannelId: readChannelId(
+    "PUBLIC_LOGS_CHANNEL_ID",
+    "PUBLIC_LOG_CHANNEL_ID",
+    "LOGS_PUBLIC_CHANNEL_ID"
+  ),
+  reviewsChannelId: readChannelId(
+    "REVIEWS_CHANNEL_ID",
+    "REVIEW_CHANNEL_ID",
+    "AVIS_CHANNEL_ID"
+  ),
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages

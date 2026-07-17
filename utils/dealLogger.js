@@ -24,22 +24,17 @@ function formatWhen(isoOrSqlite) {
  */
 function cleanChannelId(id) {
   if (id == null) return null;
-  let s = String(id).trim();
+  let s = String(id).trim().replace(/^\uFEFF/, "").replace(/[\u200B-\u200D\uFEFF]/g, "");
+  s = s.replace(/^['"]+|['"]+$/g, "").trim();
   if (!s) return null;
 
-  // Enlève guillemets éventuels
-  s = s.replace(/^['"]+|['"]+$/g, "").trim();
-
-  // <#123456789012345678>
-  const mention = s.match(/^<#(\d{17,20})>$/);
+  const mention = s.match(/^<#(\d{16,22})>$/);
   if (mention) return mention[1];
 
-  // Garde uniquement les chiffres si le reste est du bruit
   s = s.replace(/[<#>]/g, "").trim();
-  if (/^\d{17,20}$/.test(s)) return s;
+  if (/^\d{16,22}$/.test(s)) return s;
 
-  // Dernier recours: extraire un snowflake dans la chaîne
-  const embedded = s.match(/(\d{17,20})/);
+  const embedded = s.match(/(\d{16,22})/);
   if (embedded) return embedded[1];
 
   return null;
@@ -48,20 +43,41 @@ function cleanChannelId(id) {
 function diagnoseChannelEnv(envKey) {
   const raw = process.env[envKey];
   if (raw === undefined) {
-    return { ok: false, reason: `clé absente du .env (nom exact: ${envKey})` };
+    return { ok: false, reason: `clé absente (nom exact requis: ${envKey})` };
   }
-  if (String(raw).trim() === "") {
-    return { ok: false, reason: "clé présente mais VALEUR VIDE" };
+  const visible = String(raw).replace(/[\u200B-\u200D\uFEFF]/g, "");
+  if (visible.trim() === "") {
+    return {
+      ok: false,
+      reason: "clé présente mais VALEUR VIDE — tu as probablement `ADMIN_LOGS_CHANNEL_ID=` sans rien derrière",
+    };
   }
   const cleaned = cleanChannelId(raw);
   if (!cleaned) {
-    const preview = String(raw).trim().slice(0, 40);
+    const preview = visible.trim().slice(0, 48);
     return {
       ok: false,
-      reason: `valeur invalide (il faut l'ID numérique du salon, 17-20 chiffres). Reçu: "${preview}"`,
+      reason: `valeur non reconnue comme ID. Reçu (${visible.trim().length} car.): "${preview}"`,
     };
   }
   return { ok: true, id: cleaned };
+}
+
+function dumpRelatedEnvKeys() {
+  const keys = Object.keys(process.env)
+    .filter((k) => /LOG|REVIEW|AVIS|CHANNEL/i.test(k))
+    .sort();
+  if (keys.length === 0) {
+    console.warn("[logs] Aucune variable d'env contenant LOG/REVIEW/CHANNEL trouvée dans process.env");
+    return;
+  }
+  console.log("[logs] Clés d'env liées aux salons détectées:");
+  for (const k of keys) {
+    const v = process.env[k];
+    const len = v == null ? 0 : String(v).trim().length;
+    const ok = cleanChannelId(v);
+    console.log(`[logs]   - ${k} = ${len === 0 ? "(vide)" : `${len} caractères`} ${ok ? `→ ID OK ${ok}` : "→ NON valide"}`);
+  }
 }
 
 async function sendContainer(client, channelId, container) {
