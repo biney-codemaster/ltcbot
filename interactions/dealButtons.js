@@ -279,7 +279,7 @@ async function handleReleaseButton(interaction, dealCode) {
   ).run(dealCode);
   const updatedDeal = getDealByCode(dealCode);
 
-  await interaction.update({ components: [buildFundsHeldContainer(updatedDeal)] });
+  await interaction.update({ components: [] });
   await interaction.channel.send({
     components: [buildReleasedContainer(updatedDeal)],
     flags: MessageFlags.IsComponentsV2,
