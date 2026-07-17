@@ -162,6 +162,9 @@ function buildPaymentContainer(deal) {
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const address = deal.pay_address || "*adresse en cours de génération*";
   const status = statusLabel(deal.payment_status || "waiting");
+  const mockHint = config.mockPayments
+    ? `\n\n${e("info")}**Mode test** activé (\`ESCROW_MOCK_PAYMENTS=true\`) — aucun vrai LTC requis. Clique **Simuler paiement reçu**.`
+    : "";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -169,30 +172,46 @@ function buildPaymentContainer(deal) {
         `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.\n\n` +
         `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
         `${e("wallet")}**Adresse**\n\`\`\`\n${address}\n\`\`\`\n` +
-        `${e("clock")}**Statut** — ${status}\n\n` +
-        `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`
+        `${e("clock")}**Statut** — ${status}` +
+        mockHint +
+        (config.mockPayments
+          ? ""
+          : `\n\n${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`)
     )
   );
 
-  const checkButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_check_payment:${deal.deal_code}`)
-      .setLabel("Vérifier le paiement")
-      .setStyle(ButtonStyle.Primary),
-    "payment"
+  const buttons = [];
+
+  if (config.mockPayments) {
+    buttons.push(
+      applyEmoji(
+        new ButtonBuilder()
+          .setCustomId(`deal_mock_pay:${deal.deal_code}`)
+          .setLabel("Simuler paiement reçu")
+          .setStyle(ButtonStyle.Success),
+        "success"
+      )
+    );
+  }
+
+  buttons.push(
+    applyEmoji(
+      new ButtonBuilder()
+        .setCustomId(`deal_check_payment:${deal.deal_code}`)
+        .setLabel("Vérifier le paiement")
+        .setStyle(ButtonStyle.Primary),
+      "payment"
+    ),
+    applyEmoji(
+      new ButtonBuilder()
+        .setCustomId(`deal_dispute:${deal.deal_code}`)
+        .setLabel("Ouvrir un litige")
+        .setStyle(ButtonStyle.Danger),
+      "dispute"
+    )
   );
 
-  const disputeButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_dispute:${deal.deal_code}`)
-      .setLabel("Ouvrir un litige")
-      .setStyle(ButtonStyle.Danger),
-    "dispute"
-  );
-
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(checkButton, disputeButton)
-  );
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(...buttons));
   return container;
 }
 

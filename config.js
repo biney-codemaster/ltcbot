@@ -73,6 +73,10 @@ module.exports = {
   nowpaymentsPassword: process.env.NOWPAYMENTS_PASSWORD || null,
   // Optionnel: secret TOTP (app 2FA) pour valider les payouts automatiquement
   nowpayments2faSecret: process.env.NOWPAYMENTS_2FA_SECRET || null,
+  // Mode test: simule paiements/payouts sans vrai LTC (idéal pour 0.05€)
+  mockPayments:
+    String(process.env.ESCROW_MOCK_PAYMENTS || "").toLowerCase() === "true" ||
+    process.env.ESCROW_MOCK_PAYMENTS === "1",
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages
