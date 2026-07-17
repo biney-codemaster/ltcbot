@@ -10,6 +10,8 @@ const {
   LabelBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  Events,
+  MessageFlags,
 } = require("discord.js");
 const config = require("./config");
 const setupCommand = require("./commands/setup");
@@ -135,7 +137,7 @@ function buildDealModal() {
   return modal;
 }
 
-client.once("ready", () => {
+client.once(Events.ClientReady, () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
   startPaymentPoller(client);
   console.log("Polling OxaPay démarré (30s).");
@@ -175,6 +177,7 @@ client.on("interactionCreate", async (interaction) => {
       const [, dealCode] = interaction.customId.split(":");
       await handleCheckPaymentButton(interaction, dealCode);
     }
+
 
     if (interaction.isButton() && interaction.customId.startsWith("deal_regen_payment:")) {
       const [, dealCode] = interaction.customId.split(":");
@@ -226,7 +229,7 @@ client.on("interactionCreate", async (interaction) => {
     console.error("Erreur interaction:", err);
     const payload = {
       content: "Une erreur est survenue. Réessaie ou contacte le staff.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     };
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp(payload).catch(() => {});

@@ -71,7 +71,7 @@ async function execute(interaction) {
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
     return interaction.reply({
       content: `${e("error")}Permission refusée. Il faut **Gérer le serveur**.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 

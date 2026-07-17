@@ -165,33 +165,42 @@ function buildPaymentContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("payment")}Paiement escrow\n` +
-        `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.\n\n` +
-        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
-        `${e("wallet")}**Adresse**\n\`\`\`\n${address}\n\`\`\`\n` +
-        `${e("clock")}**Statut** — ${status}\n\n` +
+      `## ${e("payment")}Paiement escrow
+` +
+        `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.
+
+` +
+        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`
+` +
+        `${e("wallet")}**Adresse**
+\`\`\`
+${address}
+\`\`\`
+` +
+        `${e("clock")}**Statut** — ${status}
+
+` +
         `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`
     )
   );
 
-  const checkButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_check_payment:${deal.deal_code}`)
-      .setLabel("Vérifier le paiement")
-      .setStyle(ButtonStyle.Primary),
-    "payment"
-  );
-
-  const disputeButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_dispute:${deal.deal_code}`)
-      .setLabel("Ouvrir un litige")
-      .setStyle(ButtonStyle.Danger),
-    "dispute"
-  );
-
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(checkButton, disputeButton)
+    new ActionRowBuilder().addComponents(
+      applyEmoji(
+        new ButtonBuilder()
+          .setCustomId(`deal_check_payment:${deal.deal_code}`)
+          .setLabel("Vérifier le paiement")
+          .setStyle(ButtonStyle.Primary),
+        "payment"
+      ),
+      applyEmoji(
+        new ButtonBuilder()
+          .setCustomId(`deal_dispute:${deal.deal_code}`)
+          .setLabel("Ouvrir un litige")
+          .setStyle(ButtonStyle.Danger),
+        "dispute"
+      )
+    )
   );
   return container;
 }
