@@ -19,9 +19,14 @@ const {
   handleConfirmButton,
   handleWrongRolesButton,
   handleCancelButton,
+  handleCheckPaymentButton,
+  handleReleaseButton,
+  handleDisputeButton,
+  handleDisputeModal,
   handleCloseButton,
 } = require("./interactions/dealButtons");
 require("./database"); // initialise la DB au démarrage
+const { startPaymentPoller } = require("./utils/paymentPoller");
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
@@ -122,46 +127,80 @@ function buildDealModal() {
 
 client.once("ready", () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
+  startPaymentPoller(client);
+  console.log("Polling NOWPayments démarré (30s).");
 });
 
 client.on("interactionCreate", async (interaction) => {
-  if (interaction.isChatInputCommand() && interaction.commandName === "setup") {
-    await setupCommand.execute(interaction);
-  }
+  try {
+    if (interaction.isChatInputCommand() && interaction.commandName === "setup") {
+      await setupCommand.execute(interaction);
+    }
 
-  if (interaction.isButton() && interaction.customId === "escrow_start_deal") {
-    await interaction.showModal(buildDealModal());
-  }
+    if (interaction.isButton() && interaction.customId === "escrow_start_deal") {
+      await interaction.showModal(buildDealModal());
+    }
 
-  if (interaction.isButton() && interaction.customId.startsWith("deal_role:")) {
-    const [, role, dealCode] = interaction.customId.split(":");
-    await handleRoleButton(interaction, role, dealCode);
-  }
+    if (interaction.isButton() && interaction.customId.startsWith("deal_role:")) {
+      const [, role, dealCode] = interaction.customId.split(":");
+      await handleRoleButton(interaction, role, dealCode);
+    }
 
-  if (interaction.isButton() && interaction.customId.startsWith("deal_confirm:")) {
-    const [, dealCode] = interaction.customId.split(":");
-    await handleConfirmButton(interaction, dealCode);
-  }
+    if (interaction.isButton() && interaction.customId.startsWith("deal_confirm:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleConfirmButton(interaction, dealCode);
+    }
 
-  if (interaction.isButton() && interaction.customId.startsWith("deal_wrong_roles:")) {
-    const [, dealCode] = interaction.customId.split(":");
-    await handleWrongRolesButton(interaction, dealCode);
-  }
+    if (interaction.isButton() && interaction.customId.startsWith("deal_wrong_roles:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleWrongRolesButton(interaction, dealCode);
+    }
 
-  if (interaction.isButton() && interaction.customId.startsWith("deal_cancel:")) {
-    const [, dealCode] = interaction.customId.split(":");
-    await handleCancelButton(interaction, dealCode);
-  }
+    if (interaction.isButton() && interaction.customId.startsWith("deal_cancel:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleCancelButton(interaction, dealCode);
+    }
 
-  if (interaction.isButton() && interaction.customId.startsWith("deal_close:")) {
-    const [, dealCode] = interaction.customId.split(":");
-    await handleCloseButton(interaction, dealCode);
-  }
+    if (interaction.isButton() && interaction.customId.startsWith("deal_check_payment:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleCheckPaymentButton(interaction, dealCode);
+    }
 
-  if (interaction.isModalSubmit() && interaction.customId === "escrow_deal_modal") {
-    await handleDealModal(interaction);
+    if (interaction.isButton() && interaction.customId.startsWith("deal_release:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleReleaseButton(interaction, dealCode);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("deal_dispute:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleDisputeButton(interaction, dealCode);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("deal_close:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleCloseButton(interaction, dealCode);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === "escrow_deal_modal") {
+      await handleDealModal(interaction);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("deal_dispute_modal:")) {
+      await handleDisputeModal(interaction);
+    }
+  } catch (err) {
+    console.error("Erreur interaction:", err);
+    const payload = {
+      content: "Une erreur est survenue. Réessaie ou contacte le staff.",
+      ephemeral: true,
+    };
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp(payload).catch(() => {});
+    } else {
+      await interaction.reply(payload).catch(() => {});
+    }
   }
 });
 
-registerCommands();
+registerCommands().catch((err) => console.error("Erreur registerCommands:", err));
 client.login(config.token);

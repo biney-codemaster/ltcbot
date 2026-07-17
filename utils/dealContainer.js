@@ -5,62 +5,91 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  SeparatorSpacingSize,
 } = require("discord.js");
 const config = require("../config");
 const { formatLtcAmount } = require("./ltcPrice");
+const { statusLabel } = require("./nowpayments");
+
+const { e, emojis } = config;
+
+function applyEmoji(button, key) {
+  if (emojis[key]) button.setEmoji(emojis[key]);
+  return button;
+}
 
 function formatCryptoPrice(deal) {
   const crypto = deal.crypto || "LTC";
   const amount = formatLtcAmount(Number(deal.pay_amount));
-  if (!amount) return `${crypto} (cours indisponible)`;
+  if (!amount) return `${crypto} · cours indisponible`;
   return `≈ ${amount} ${crypto}`;
 }
 
-function dealHeader(deal) {
+function dealTitle(deal) {
+  return `# ${e("deal")}Deal #${deal.deal_code}`;
+}
+
+function dealOverview(deal) {
   return (
-    `${config.emojiText.deal} **Deal #${deal.deal_code}**\n` +
+    `## ${e("users")}Participants\n` +
     `<@${deal.initiator_id}> ↔ <@${deal.partner_id}>\n\n` +
-    `Produit: ${deal.product}\n` +
-    `Prix: ${deal.price}${deal.currency} (${formatCryptoPrice(deal)})`
+    `## ${e("product")}Détails\n` +
+    `**Produit** — ${deal.product}\n` +
+    `**Prix** — ${deal.price}${deal.currency}\n` +
+    `**Crypto** — ${formatCryptoPrice(deal)}`
   );
 }
 
-/**
- * Étape 1: sélection des rôles (Acheteur / Vendeur) + Annuler.
- */
+function addStandardHeader(container, deal) {
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealTitle(deal)));
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealOverview(deal)));
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
+}
+
 function buildRoleSelectionContainer(deal) {
   const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
 
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealHeader(deal)));
-  container.addSeparatorComponents(new SeparatorBuilder());
+  const buyerLabel = deal.buyer_id ? `<@${deal.buyer_id}>` : "*en attente*";
+  const sellerLabel = deal.seller_id ? `<@${deal.seller_id}>` : "*en attente*";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "Vous devez chacun choisir votre rôle dans ce deal (Acheteur ou Vendeur)."
+      `## ${e("roles")}Sélection des rôles\n` +
+        `Chaque participant doit indiquer s'il est **acheteur** ou **vendeur** dans ce deal.\n\n` +
+        `${e("buyer")}**Acheteur** — ${buyerLabel}\n` +
+        `${e("seller")}**Vendeur** — ${sellerLabel}`
     )
   );
 
-  const buyerLabel = deal.buyer_id ? `<@${deal.buyer_id}>` : "en attente";
-  const sellerLabel = deal.seller_id ? `<@${deal.seller_id}>` : "en attente";
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`Acheteur: ${buyerLabel}\nVendeur: ${sellerLabel}`)
+  const buyerButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_role:BUYER:${deal.deal_code}`)
+      .setLabel("Acheteur")
+      .setStyle(deal.buyer_id ? ButtonStyle.Success : ButtonStyle.Secondary),
+    "buyer"
   );
 
-  const buyerButton = new ButtonBuilder()
-    .setCustomId(`deal_role:BUYER:${deal.deal_code}`)
-    .setLabel("Acheteur")
-    .setStyle(deal.buyer_id ? ButtonStyle.Success : ButtonStyle.Secondary);
+  const sellerButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_role:SELLER:${deal.deal_code}`)
+      .setLabel("Vendeur")
+      .setStyle(deal.seller_id ? ButtonStyle.Success : ButtonStyle.Secondary),
+    "seller"
+  );
 
-  const sellerButton = new ButtonBuilder()
-    .setCustomId(`deal_role:SELLER:${deal.deal_code}`)
-    .setLabel("Vendeur")
-    .setStyle(deal.seller_id ? ButtonStyle.Success : ButtonStyle.Secondary);
-
-  const cancelButton = new ButtonBuilder()
-    .setCustomId(`deal_cancel:${deal.deal_code}`)
-    .setLabel("Annuler")
-    .setStyle(ButtonStyle.Danger);
+  const cancelButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_cancel:${deal.deal_code}`)
+      .setLabel("Annuler")
+      .setStyle(ButtonStyle.Danger),
+    "cancel"
+  );
 
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(buyerButton, sellerButton, cancelButton)
@@ -69,35 +98,38 @@ function buildRoleSelectionContainer(deal) {
   return container;
 }
 
-/**
- * Étape 2: récap des rôles + confirmation des deux participants.
- */
 function buildConfirmationContainer(deal) {
   const container = new ContainerBuilder();
-
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealHeader(deal)));
-  container.addSeparatorComponents(new SeparatorBuilder());
+  const confirmCount = (deal.initiator_confirmed ? 1 : 0) + (deal.partner_confirmed ? 1 : 0);
+  addStandardHeader(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `Acheteur: <@${deal.buyer_id}>\nVendeur: <@${deal.seller_id}>\n\n` +
-        `Vérifiez que les rôles sont corrects avant de confirmer.`
+      `## ${e("confirm")}Confirmation des rôles\n` +
+        `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
+        `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n\n` +
+        `${e("warning")}Vérifiez attentivement que les rôles sont corrects avant de confirmer.\n` +
+        `${e("clock")}Confirmations : **${confirmCount}/2**`
     )
   );
 
-  const confirmCount = deal.initiator_confirmed + deal.partner_confirmed;
+  const confirmButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_confirm:${deal.deal_code}`)
+      .setLabel(`Confirmer (${confirmCount}/2)`)
+      .setStyle(confirmCount === 2 ? ButtonStyle.Success : ButtonStyle.Primary)
+      .setDisabled(confirmCount === 2),
+    "confirm"
+  );
 
-  const confirmButton = new ButtonBuilder()
-    .setCustomId(`deal_confirm:${deal.deal_code}`)
-    .setLabel(`Confirmer (${confirmCount}/2)`)
-    .setStyle(confirmCount === 2 ? ButtonStyle.Success : ButtonStyle.Primary)
-    .setDisabled(confirmCount === 2);
-
-  const wrongRolesButton = new ButtonBuilder()
-    .setCustomId(`deal_wrong_roles:${deal.deal_code}`)
-    .setLabel("Rôles incorrects")
-    .setStyle(ButtonStyle.Danger)
-    .setDisabled(confirmCount === 2);
+  const wrongRolesButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_wrong_roles:${deal.deal_code}`)
+      .setLabel("Rôles incorrects")
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(confirmCount === 2),
+    "warning"
+  );
 
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(confirmButton, wrongRolesButton)
@@ -106,47 +138,182 @@ function buildConfirmationContainer(deal) {
   return container;
 }
 
-/**
- * Étape 3: récap final une fois les rôles confirmés par les deux parties.
- */
 function buildFinalRecapContainer(deal) {
   const container = new ContainerBuilder();
-
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealHeader(deal)));
-  container.addSeparatorComponents(new SeparatorBuilder());
+  addStandardHeader(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `Acheteur: <@${deal.buyer_id}>\nVendeur: <@${deal.seller_id}>\n\n` +
-        `${config.emojiText.money} Rôles confirmés par les deux parties.\n` +
-        `Prochaine étape: génération de l'adresse de paiement.`
+      `## ${e("success")}Rôles confirmés\n` +
+        `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
+        `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n\n` +
+        `${e("shield")}Les deux parties ont validé les termes du deal.\n` +
+        `${e("next")}**Prochaine étape** — génération de l'adresse de paiement ${deal.crypto || "LTC"}.`
     )
   );
 
   return container;
 }
 
-/**
- * Container envoyé quand un participant annule le deal.
- * Seul le staff peut effectivement fermer le salon.
- */
+function buildPaymentContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const address = deal.pay_address || "*adresse en cours de génération*";
+  const status = statusLabel(deal.payment_status || "waiting");
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("payment")}Paiement escrow\n` +
+        `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.\n\n` +
+        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
+        `${e("wallet")}**Adresse**\n\`\`\`\n${address}\n\`\`\`\n` +
+        `${e("clock")}**Statut** — ${status}\n\n` +
+        `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`
+    )
+  );
+
+  const checkButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_check_payment:${deal.deal_code}`)
+      .setLabel("Vérifier le paiement")
+      .setStyle(ButtonStyle.Primary),
+    "payment"
+  );
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(checkButton));
+  return container;
+}
+
+function buildPaymentFailedContainer(deal, reason) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("error")}Paiement non finalisé\n` +
+        `Statut : **${reason}**\n\n` +
+        `${e("staff")}Contactez le staff si vous avez déjà envoyé des fonds.`
+    )
+  );
+
+  return container;
+}
+
+function buildFundsHeldContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("shield")}Fonds sécurisés\n` +
+        `${e("success")}Le paiement a été reçu et est conservé en escrow.\n\n` +
+        `${e("seller")}<@${deal.seller_id}> — livrez le produit à l'acheteur.\n` +
+        `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
+        `${e("info")}La libération des fonds vers le vendeur sera effectuée après confirmation.`
+    )
+  );
+
+  const releaseButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_release:${deal.deal_code}`)
+      .setLabel("Produit reçu — libérer")
+      .setStyle(ButtonStyle.Success),
+    "release"
+  );
+
+  const disputeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_dispute:${deal.deal_code}`)
+      .setLabel("Ouvrir un litige")
+      .setStyle(ButtonStyle.Danger),
+    "dispute"
+  );
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(releaseButton, disputeButton)
+  );
+
+  return container;
+}
+
+function buildReleasedContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("release")}Deal terminé\n` +
+        `${e("success")}L'acheteur a confirmé la réception du produit.\n` +
+        `${e("money")}Les fonds peuvent être libérés au vendeur <@${deal.seller_id}>.\n\n` +
+        `${e("staff")}Le staff peut maintenant fermer ce salon.`
+    )
+  );
+
+  const closeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_close:${deal.deal_code}`)
+      .setLabel("Fermer le salon")
+      .setStyle(ButtonStyle.Danger),
+    "close"
+  );
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
+  return container;
+}
+
+function buildDisputeContainer(deal, openedBy) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("dispute")}Litige ouvert\n` +
+        `Ouvert par <@${openedBy}>.\n\n` +
+        `**Motif**\n${deal.dispute_reason || "*non précisé*"}\n\n` +
+        `${e("staff")}Un médiateur doit intervenir avant toute libération des fonds.`
+    )
+  );
+
+  const closeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_close:${deal.deal_code}`)
+      .setLabel("Fermer le salon")
+      .setStyle(ButtonStyle.Danger),
+    "close"
+  );
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
+  return container;
+}
+
 function buildCloseTicketContainer(deal, cancelledBy) {
   const container = new ContainerBuilder();
 
   container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`# ${e("cancel")}Deal annulé`)
+  );
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${config.emojiText.info} **Deal #${deal.deal_code} annulé** par <@${cancelledBy}>.\n` +
-        `Un membre du staff doit fermer ce salon.`
+      `## ${e("deal")}Deal #${deal.deal_code}\n` +
+        `Annulé par <@${cancelledBy}>.\n\n` +
+        `${e("staff")}Un membre du staff doit fermer ce salon pour finaliser l'annulation.`
     )
   );
 
-  const closeButton = new ButtonBuilder()
-    .setCustomId(`deal_close:${deal.deal_code}`)
-    .setLabel("Fermer le salon")
-    .setStyle(ButtonStyle.Danger);
+  const closeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_close:${deal.deal_code}`)
+      .setLabel("Fermer le salon")
+      .setStyle(ButtonStyle.Danger),
+    "close"
+  );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
-
   return container;
 }
 
@@ -154,5 +321,10 @@ module.exports = {
   buildRoleSelectionContainer,
   buildConfirmationContainer,
   buildFinalRecapContainer,
+  buildPaymentContainer,
+  buildPaymentFailedContainer,
+  buildFundsHeldContainer,
+  buildReleasedContainer,
+  buildDisputeContainer,
   buildCloseTicketContainer,
 };

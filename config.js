@@ -2,7 +2,7 @@
 // par setEmoji(). Accepte null (emoji pas encore défini) sans planter.
 function parseEmoji(raw) {
   if (!raw) return null;
-  const match = raw.match(/^<(a)?:(\w+):(\d+)>$/);
+  const match = raw.match(/^<(a)?:([\w]+):(\d+)>$/);
   if (!match) return null;
   const [, animated, name, id] = match;
   return { id, name, animated: !!animated };
@@ -10,10 +10,39 @@ function parseEmoji(raw) {
 
 // Emojis persos du serveur — mets null tant que tu n'as pas l'ID,
 // ou "<:nom:id>" (copie-colle exact, tape \:nomemoji: dans un salon) une fois prêt.
+// Aucun emoji Unicode : uniquement des emojis custom Discord.
 const rawEmojis = {
-  info: null,
-  deal: null,
-  money: null,
+  // Général / navigation
+  info: null, // infos, messages système
+  success: null, // validation, succès
+  warning: null, // attention, rôles incorrects
+  error: null, // erreur, échec
+  cancel: null, // annulation
+  confirm: null, // confirmation
+  close: null, // fermeture de salon
+  next: null, // prochaine étape
+  lock: null, // salon privé / sécurité
+  staff: null, // médiation / staff
+  clock: null, // en attente
+
+  // Escrow / deal
+  escrow: null, // panneau principal escrow
+  deal: null, // deal / transaction
+  shield: null, // confiance / protection des fonds
+  roles: null, // sélection des rôles
+  buyer: null, // rôle acheteur
+  seller: null, // rôle vendeur
+  product: null, // produit échangé
+  users: null, // participants
+
+  // Paiement
+  money: null, // montant fiat
+  crypto: null, // crypto générique
+  ltc: null, // Litecoin
+  wallet: null, // adresse / portefeuille
+  payment: null, // paiement en cours
+  release: null, // libération des fonds
+  dispute: null, // litige
 };
 
 const emojis = {};
@@ -27,12 +56,20 @@ for (const [key, value] of Object.entries(rawEmojis)) {
   emojiText[key] = parseEmoji(value) ? value : "";
 }
 
+/** Préfixe emoji + espace, ou chaîne vide si non configuré (évite les espaces orphelins). */
+function e(key) {
+  return emojiText[key] ? `${emojiText[key]} ` : "";
+}
+
 module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.CLIENT_ID,
   guildId: process.env.GUILD_ID, // pour enregistrer les commandes en dev (instant), sinon global
   staffRoleId: process.env.STAFF_ROLE_ID, // rôle staff/médiateur ayant accès aux salons de deal
+  nowpaymentsApiKey: process.env.NOWPAYMENTS_API_KEY,
+  nowpaymentsIpnUrl: process.env.NOWPAYMENTS_IPN_URL || null, // optionnel (webhook public)
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages
+  e, // helper d'affichage: e("deal") => "<:deal:id> " ou ""
 };
