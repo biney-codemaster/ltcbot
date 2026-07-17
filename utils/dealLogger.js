@@ -18,10 +18,50 @@ function formatWhen(isoOrSqlite) {
   return d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
 }
 
+/**
+ * Normalise un ID de salon Discord.
+ * Accepte: 123..., <#123...>, "123...", avec espaces.
+ */
 function cleanChannelId(id) {
-  if (!id) return null;
-  const cleaned = String(id).trim().replace(/[<#>]/g, "");
-  return /^\d{17,20}$/.test(cleaned) ? cleaned : null;
+  if (id == null) return null;
+  let s = String(id).trim();
+  if (!s) return null;
+
+  // Enlève guillemets éventuels
+  s = s.replace(/^['"]+|['"]+$/g, "").trim();
+
+  // <#123456789012345678>
+  const mention = s.match(/^<#(\d{17,20})>$/);
+  if (mention) return mention[1];
+
+  // Garde uniquement les chiffres si le reste est du bruit
+  s = s.replace(/[<#>]/g, "").trim();
+  if (/^\d{17,20}$/.test(s)) return s;
+
+  // Dernier recours: extraire un snowflake dans la chaîne
+  const embedded = s.match(/(\d{17,20})/);
+  if (embedded) return embedded[1];
+
+  return null;
+}
+
+function diagnoseChannelEnv(envKey) {
+  const raw = process.env[envKey];
+  if (raw === undefined) {
+    return { ok: false, reason: `clé absente du .env (nom exact: ${envKey})` };
+  }
+  if (String(raw).trim() === "") {
+    return { ok: false, reason: "clé présente mais VALEUR VIDE" };
+  }
+  const cleaned = cleanChannelId(raw);
+  if (!cleaned) {
+    const preview = String(raw).trim().slice(0, 40);
+    return {
+      ok: false,
+      reason: `valeur invalide (il faut l'ID numérique du salon, 17-20 chiffres). Reçu: "${preview}"`,
+    };
+  }
+  return { ok: true, id: cleaned };
 }
 
 async function sendContainer(client, channelId, container) {
@@ -67,9 +107,6 @@ function buildAdminLogContainer(title, lines) {
   return container;
 }
 
-/**
- * Log admin (événements internes).
- */
 async function logAdmin(client, title, lines) {
   return sendContainer(
     client,
@@ -78,9 +115,6 @@ async function logAdmin(client, title, lines) {
   );
 }
 
-/**
- * Log public — deals complétés uniquement.
- */
 async function logPublicCompleted(client, deal) {
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const when = formatWhen(deal.completed_at || deal.review_at || deal.updated_at);
@@ -114,34 +148,56 @@ async function logPublicCompleted(client, deal) {
   return sendContainer(client, config.publicLogsChannelId, container);
 }
 
-/** Ping des salons logs au démarrage (diagnostic). */
+/** Ping des salons logs au démarrage (diagnostic détaillé). */
 async function probeLogChannels(client) {
   const targets = [
-    ["ADMIN_LOGS_CHANNEL_ID", config.adminLogsChannelId],
-    ["PUBLIC_LOGS_CHANNEL_ID", config.publicLogsChannelId],
-    ["REVIEWS_CHANNEL_ID", config.reviewsChannelId],
+    "ADMIN_LOGS_CHANNEL_ID",
+    "PUBLIC_LOGS_CHANNEL_ID",
+    "REVIEWS_CHANNEL_ID",
   ];
 
-  for (const [name, raw] of targets) {
-    const id = cleanChannelId(raw);
-    if (!id) {
-      console.warn(`[logs] ${name} non configuré`);
+  console.log("[logs] Diagnostic .env salons:");
+  for (const envKey of targets) {
+    const diag = diagnoseChannelEnv(envKey);
+    if (!diag.ok) {
+      console.warn(`[logs] ${envKey} → ${diag.reason}`);
       continue;
     }
     try {
-      const ch = await client.channels.fetch(id);
-      console.log(`[logs] ${name} OK → #${ch.name} (${id})`);
+      const ch = await client.channels.fetch(diag.id);
+      console.log(`[logs] ${envKey} OK → #${ch.name} (${diag.id})`);
     } catch (err) {
-      console.error(`[logs] ${name} KO (${id}): ${err.message}`);
+      console.error(
+        `[logs] ${envKey} ID lu (${diag.id}) mais salon inaccessible: ${err.message}`
+      );
+      console.error(
+        "[logs] → le bot doit voir le salon (permissions) et l'ID doit être celui du salon, pas du serveur"
+      );
     }
   }
 
-  if (cleanChannelId(config.adminLogsChannelId)) {
+  // Recharge depuis process.env (au cas où config a été figé avec valeurs vides)
+  const adminId = cleanChannelId(process.env.ADMIN_LOGS_CHANNEL_ID);
+  if (adminId) {
+    // sync config runtime
+    config.adminLogsChannelId = adminId;
+    config.publicLogsChannelId = cleanChannelId(process.env.PUBLIC_LOGS_CHANNEL_ID);
+    config.reviewsChannelId = cleanChannelId(process.env.REVIEWS_CHANNEL_ID);
+
     await logAdmin(client, "Bot démarré", [
       `Bot connecté — logs admin opérationnels.`,
-      `Public logs: ${cleanChannelId(config.publicLogsChannelId) ? "OK" : "non configuré"}`,
-      `Reviews: ${cleanChannelId(config.reviewsChannelId) ? "OK" : "non configuré"}`,
+      `Public logs: ${config.publicLogsChannelId ? "OK" : "non configuré"}`,
+      `Reviews: ${config.reviewsChannelId ? "OK" : "non configuré"}`,
     ]);
+  } else {
+    console.warn(
+      "[logs] Aucun ADMIN_LOGS_CHANNEL_ID valide → aucun log Discord ne partira.\n" +
+        "Exemple dans .env (sans espaces, sans guillemets nécessaires):\n" +
+        "ADMIN_LOGS_CHANNEL_ID=123456789012345678\n" +
+        "PUBLIC_LOGS_CHANNEL_ID=123456789012345678\n" +
+        "REVIEWS_CHANNEL_ID=123456789012345678\n" +
+        "Astuce: Mode développeur Discord → clic droit salon → Copier l'identifiant du salon"
+    );
   }
 }
 
@@ -151,5 +207,6 @@ module.exports = {
   formatWhen,
   probeLogChannels,
   cleanChannelId,
+  diagnoseChannelEnv,
   buildAdminLogContainer,
 };

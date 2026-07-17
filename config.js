@@ -61,6 +61,19 @@ function e(key) {
   return emojiText[key] ? `${emojiText[key]} ` : "";
 }
 
+function readChannelId(envKey) {
+  const raw = process.env[envKey];
+  if (raw == null) return null;
+  let s = String(raw).trim().replace(/^['"]+|['"]+$/g, "").trim();
+  if (!s) return null;
+  const mention = s.match(/^<#(\d{17,20})>$/);
+  if (mention) return mention[1];
+  s = s.replace(/[<#>]/g, "").trim();
+  if (/^\d{17,20}$/.test(s)) return s;
+  const embedded = s.match(/(\d{17,20})/);
+  return embedded ? embedded[1] : null;
+}
+
 module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.CLIENT_ID,
@@ -69,10 +82,10 @@ module.exports = {
   /** Seed BIP39 du wallet HD escrow (sinon fichier wallet.mnemonic auto-créé). */
   ltcWalletMnemonic: (process.env.LTC_WALLET_MNEMONIC || "").trim() || null,
 
-  /** Salons Discord (IDs). */
-  adminLogsChannelId: (process.env.ADMIN_LOGS_CHANNEL_ID || "").trim().replace(/[<#>]/g, "") || null,
-  publicLogsChannelId: (process.env.PUBLIC_LOGS_CHANNEL_ID || "").trim().replace(/[<#>]/g, "") || null,
-  reviewsChannelId: (process.env.REVIEWS_CHANNEL_ID || "").trim().replace(/[<#>]/g, "") || null,
+  /** Salons Discord (IDs numériques uniquement). */
+  adminLogsChannelId: readChannelId("ADMIN_LOGS_CHANNEL_ID"),
+  publicLogsChannelId: readChannelId("PUBLIC_LOGS_CHANNEL_ID"),
+  reviewsChannelId: readChannelId("REVIEWS_CHANNEL_ID"),
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages
