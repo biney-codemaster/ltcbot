@@ -17,7 +17,7 @@ const {
   buildDisputeContainer,
   buildCloseTicketContainer,
 } = require("../utils/dealContainer");
-const { createLtcPayment } = require("../utils/nowpayments");
+const { createLtcPayment, payoutToSeller, isValidLtcAddress } = require("../utils/nowpayments");
 const { refreshDealPayment } = require("../utils/paymentPoller");
 const { formatLtcAmount } = require("../utils/ltcPrice");
 
@@ -262,7 +262,7 @@ async function handleCheckPaymentButton(interaction, dealCode) {
 }
 
 /**
- * Acheteur confirme la réception → libération.
+ * Acheteur confirme la réception → payout Custody vers le vendeur.
  */
 async function handleReleaseButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
@@ -273,17 +273,142 @@ async function handleReleaseButton(interaction, dealCode) {
   if (interaction.user.id !== deal.buyer_id && !isStaff(interaction.member)) {
     return deny(interaction, "Seul l'acheteur (ou le staff) peut libérer les fonds.");
   }
+  if (!deal.seller_wallet) {
+    return deny(
+      interaction,
+      "Le vendeur doit d'abord renseigner son adresse LTC (bouton Adresse de retrait)."
+    );
+  }
+
+  await interaction.deferUpdate();
+
+  let payoutId = null;
+  let payoutStatus = null;
+  let payoutError = null;
+
+  try {
+    const result = await payoutToSeller(deal);
+    payoutId = result.payoutId;
+    payoutStatus = result.status;
+    if (result.warning) {
+      payoutStatus = "awaiting_2fa";
+    }
+  } catch (err) {
+    console.error("Payout vendeur:", err.message);
+    payoutError = err.message;
+    payoutStatus = "failed";
+  }
 
   db.prepare(
-    `UPDATE deals SET status = 'released', updated_at = datetime('now') WHERE deal_code = ?`
-  ).run(dealCode);
+    `UPDATE deals
+     SET status = 'released',
+         payout_id = @payout_id,
+         payout_status = @payout_status,
+         payout_error = @payout_error,
+         updated_at = datetime('now')
+     WHERE deal_code = @deal_code`
+  ).run({
+    payout_id: payoutId,
+    payout_status: payoutStatus,
+    payout_error: payoutError,
+    deal_code: dealCode,
+  });
+
   const updatedDeal = getDealByCode(dealCode);
 
-  await interaction.update({ components: [] });
+  await interaction.editReply({ components: [] });
   await interaction.channel.send({
     components: [buildReleasedContainer(updatedDeal)],
     flags: MessageFlags.IsComponentsV2,
   });
+}
+
+/**
+ * Vendeur (ou staff) ouvre le modal d'adresse LTC.
+ */
+async function handleSellerWalletButton(interaction, dealCode) {
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (deal.status !== "funds_held") {
+    return deny(interaction, "L'adresse ne peut être définie qu'une fois les fonds sécurisés.");
+  }
+  if (interaction.user.id !== deal.seller_id && !isStaff(interaction.member)) {
+    return deny(interaction, "Seul le vendeur (ou le staff) peut définir l'adresse de retrait.");
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId(`deal_seller_wallet_modal:${dealCode}`)
+    .setTitle("Adresse LTC de retrait");
+
+  const walletInput = new TextInputBuilder()
+    .setCustomId("seller_wallet")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(100)
+    .setPlaceholder("ltc1... ou L...");
+
+  if (deal.seller_wallet) {
+    walletInput.setValue(deal.seller_wallet);
+  }
+
+  const walletLabel = new LabelBuilder()
+    .setLabel("Adresse Litecoin du vendeur")
+    .setTextInputComponent(walletInput);
+
+  modal.addLabelComponents(walletLabel);
+  await interaction.showModal(modal);
+}
+
+/**
+ * Enregistre l'adresse LTC du vendeur.
+ */
+async function handleSellerWalletModal(interaction) {
+  const dealCode = interaction.customId.split(":")[1];
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (interaction.user.id !== deal.seller_id && !isStaff(interaction.member)) {
+    return deny(interaction, "Seul le vendeur (ou le staff) peut définir l'adresse de retrait.");
+  }
+
+  const wallet = interaction.fields.getTextInputValue("seller_wallet").trim();
+  if (!isValidLtcAddress(wallet)) {
+    return deny(
+      interaction,
+      "Adresse LTC invalide. Utilise une adresse Litecoin (L… / M… / ltc1…)."
+    );
+  }
+
+  db.prepare(
+    `UPDATE deals
+     SET seller_wallet = @seller_wallet, updated_at = datetime('now')
+     WHERE deal_code = @deal_code`
+  ).run({ seller_wallet: wallet, deal_code: dealCode });
+
+  const updatedDeal = getDealByCode(dealCode);
+
+  await interaction.reply({
+    content: `${e("success")}Adresse de retrait enregistrée : \`${wallet}\``,
+    ephemeral: true,
+  });
+
+  // Met à jour le message funds_held si possible (message de l'interaction précédente non dispo)
+  try {
+    const messages = await interaction.channel.messages.fetch({ limit: 15 });
+    const fundsMsg = messages.find(
+      (m) =>
+        m.author.id === interaction.client.user.id &&
+        m.components?.length &&
+        JSON.stringify(m.components).includes(`deal_release:${dealCode}`)
+    );
+    if (fundsMsg) {
+      await fundsMsg.edit({
+        components: [buildFundsHeldContainer(updatedDeal)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+  } catch (err) {
+    console.error("Maj container funds_held:", err.message);
+  }
 }
 
 /**
@@ -375,6 +500,8 @@ module.exports = {
   handleCancelButton,
   handleCheckPaymentButton,
   handleReleaseButton,
+  handleSellerWalletButton,
+  handleSellerWalletModal,
   handleDisputeButton,
   handleDisputeModal,
   handleCloseButton,

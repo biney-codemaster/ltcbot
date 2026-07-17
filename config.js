@@ -68,6 +68,11 @@ module.exports = {
   staffRoleId: process.env.STAFF_ROLE_ID, // rôle staff/médiateur ayant accès aux salons de deal
   nowpaymentsApiKey: process.env.NOWPAYMENTS_API_KEY,
   nowpaymentsIpnUrl: process.env.NOWPAYMENTS_IPN_URL || null, // optionnel (webhook public)
+  // Requis pour payout Custody → vendeur
+  nowpaymentsEmail: process.env.NOWPAYMENTS_EMAIL || null,
+  nowpaymentsPassword: process.env.NOWPAYMENTS_PASSWORD || null,
+  // Optionnel: secret TOTP (app 2FA) pour valider les payouts automatiquement
+  nowpayments2faSecret: process.env.NOWPAYMENTS_2FA_SECRET || null,
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages

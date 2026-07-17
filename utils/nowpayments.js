@@ -1,3 +1,4 @@
+const { TOTP } = require("otpauth");
 const config = require("../config");
 
 const API_BASE = "https://api.nowpayments.io/v1";
@@ -5,6 +6,10 @@ const API_BASE = "https://api.nowpayments.io/v1";
 const PAID_STATUSES = new Set(["finished"]);
 const ACTIVE_STATUSES = new Set(["waiting", "confirming", "confirmed", "sending", "partially_paid"]);
 const TERMINAL_FAIL_STATUSES = new Set(["failed", "expired", "refunded"]);
+
+/** JWT cache court (NOWPayments: ~5 min). */
+let cachedJwt = null;
+let cachedJwtExpiresAt = 0;
 
 function fiatCurrencyCode(currencySymbol) {
   if (currencySymbol === "€") return "eur";
@@ -23,35 +28,92 @@ function statusLabel(status) {
     failed: "Échec",
     expired: "Expiré",
     refunded: "Remboursé",
+    creating: "Payout en création",
+    processing: "Payout en cours",
+    sending_payout: "Envoi au vendeur",
   };
   return labels[status] || status || "Inconnu";
 }
 
-async function nowpaymentsRequest(method, path, body) {
+/**
+ * Validation basique d'une adresse Litecoin (legacy / P2SH / bech32).
+ */
+function isValidLtcAddress(address) {
+  if (!address || typeof address !== "string") return false;
+  const trimmed = address.trim();
+  if (/^ltc1[a-z0-9]{25,90}$/i.test(trimmed)) return true;
+  if (/^[LM3][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(trimmed)) return true;
+  return false;
+}
+
+async function nowpaymentsRequest(method, path, body, { bearer } = {}) {
   if (!config.nowpaymentsApiKey) {
     throw new Error("NOWPAYMENTS_API_KEY manquant dans le .env");
   }
 
+  const headers = {
+    "x-api-key": config.nowpaymentsApiKey,
+    "Content-Type": "application/json",
+  };
+  if (bearer) {
+    headers.Authorization = `Bearer ${bearer}`;
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: {
-      "x-api-key": config.nowpaymentsApiKey,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = data.message || data.error || `HTTP ${res.status}`;
+    const msg = data.message || data.error || JSON.stringify(data) || `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return data;
 }
 
 /**
+ * Auth JWT requis pour les payouts Custody.
+ */
+async function authenticate() {
+  if (!config.nowpaymentsEmail || !config.nowpaymentsPassword) {
+    throw new Error(
+      "NOWPAYMENTS_EMAIL et NOWPAYMENTS_PASSWORD requis pour libérer les fonds vers le vendeur"
+    );
+  }
+
+  if (cachedJwt && Date.now() < cachedJwtExpiresAt) {
+    return cachedJwt;
+  }
+
+  const data = await nowpaymentsRequest("POST", "/auth", {
+    email: config.nowpaymentsEmail,
+    password: config.nowpaymentsPassword,
+  });
+
+  if (!data.token) {
+    throw new Error("Authentification NOWPayments échouée (pas de token)");
+  }
+
+  cachedJwt = data.token;
+  // Marge de sécurité: 4 minutes
+  cachedJwtExpiresAt = Date.now() + 4 * 60 * 1000;
+  return cachedJwt;
+}
+
+function generateTotpCode() {
+  if (!config.nowpayments2faSecret) return null;
+  const totp = new TOTP({
+    secret: config.nowpayments2faSecret,
+    digits: 6,
+    period: 30,
+  });
+  return totp.generate();
+}
+
+/**
  * Crée un paiement LTC via NOWPayments pour un deal.
- * @param {object} deal
  */
 async function createLtcPayment(deal) {
   const priceCurrency = fiatCurrencyCode(deal.currency);
@@ -77,6 +139,75 @@ async function getPaymentStatus(paymentId) {
   return nowpaymentsRequest("GET", `/payment/${paymentId}`);
 }
 
+/**
+ * Envoie le LTC du Custody vers l'adresse du vendeur.
+ * @returns {{ payoutId: string, status: string, raw: object }}
+ */
+async function payoutToSeller(deal) {
+  if (!deal.seller_wallet) {
+    throw new Error("Adresse LTC du vendeur manquante");
+  }
+  if (!isValidLtcAddress(deal.seller_wallet)) {
+    throw new Error("Adresse LTC du vendeur invalide");
+  }
+
+  const amount = Number(deal.pay_amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Montant crypto invalide pour le payout");
+  }
+
+  const token = await authenticate();
+  const currency = String(deal.crypto || "LTC").toLowerCase();
+
+  const payload = {
+    withdrawals: [
+      {
+        address: deal.seller_wallet.trim(),
+        currency,
+        amount,
+        unique_id: `escrow-${deal.deal_code}`,
+      },
+    ],
+  };
+
+  if (config.nowpaymentsIpnUrl) {
+    payload.ipn_callback_url = config.nowpaymentsIpnUrl;
+  }
+
+  const created = await nowpaymentsRequest("POST", "/payout", payload, { bearer: token });
+  const payoutId = String(created.id || created.batch_withdrawal_id || "");
+  let status = created.withdrawals?.[0]?.status || created.status || "creating";
+
+  // Si 2FA activé sur le compte, tenter une vérif auto via secret TOTP
+  const totpCode = generateTotpCode();
+  if (payoutId && totpCode) {
+    try {
+      const freshToken = await authenticate();
+      await nowpaymentsRequest(
+        "POST",
+        `/payout/${payoutId}/verify`,
+        { verification_code: totpCode },
+        { bearer: freshToken }
+      );
+      status = "processing";
+    } catch (err) {
+      // Payout créé mais non vérifié — le staff pourra valider dans le dashboard
+      console.error(`Vérification 2FA payout #${payoutId}:`, err.message);
+      return {
+        payoutId,
+        status: "awaiting_2fa",
+        raw: created,
+        warning: err.message,
+      };
+    }
+  } else if (payoutId && !totpCode && config.nowpaymentsEmail) {
+    // Pas de secret 2FA: le payout peut rester en attente de validation manuelle
+    status = status || "awaiting_2fa";
+  }
+
+  return { payoutId, status, raw: created };
+}
+
 function isPaidStatus(status) {
   return PAID_STATUSES.has(status);
 }
@@ -92,9 +223,12 @@ function isFailedStatus(status) {
 module.exports = {
   createLtcPayment,
   getPaymentStatus,
+  payoutToSeller,
+  authenticate,
   statusLabel,
   isPaidStatus,
   isActiveStatus,
   isFailedStatus,
+  isValidLtcAddress,
   fiatCurrencyCode,
 };

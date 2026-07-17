@@ -21,6 +21,8 @@ const {
   handleCancelButton,
   handleCheckPaymentButton,
   handleReleaseButton,
+  handleSellerWalletButton,
+  handleSellerWalletModal,
   handleDisputeButton,
   handleDisputeModal,
   handleCloseButton,
@@ -171,6 +173,11 @@ client.on("interactionCreate", async (interaction) => {
       await handleReleaseButton(interaction, dealCode);
     }
 
+    if (interaction.isButton() && interaction.customId.startsWith("deal_seller_wallet:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleSellerWalletButton(interaction, dealCode);
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith("deal_dispute:")) {
       const [, dealCode] = interaction.customId.split(":");
       await handleDisputeButton(interaction, dealCode);
@@ -183,6 +190,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isModalSubmit() && interaction.customId === "escrow_deal_modal") {
       await handleDealModal(interaction);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("deal_seller_wallet_modal:")) {
+      await handleSellerWalletModal(interaction);
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith("deal_dispute_modal:")) {
