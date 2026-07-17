@@ -9,7 +9,7 @@ const {
 } = require("discord.js");
 const config = require("../config");
 const { formatLtcAmount } = require("./ltcPrice");
-const { statusLabel } = require("./nowpayments");
+const { statusLabel } = require("./oxapay");
 
 const { e, emojis } = config;
 
@@ -202,7 +202,7 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   addStandardHeader(container, deal);
 
   const isMin =
-    /Bloqué par l'API NOWPayments|montant trop|too small|minimum/i.test(
+    /Bloqué par l'API OxaPay|montant trop|too small|minimum|BELOW_MINIMUM/i.test(
       String(errorMessage || "")
     );
 
@@ -211,8 +211,8 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
       `## ${e("error")}Adresse de paiement indisponible\n` +
         `Erreur : \`${errorMessage || "inconnue"}\`\n\n` +
         (isMin
-          ? `${e("info")}Ce n'est **pas** un bug du bot : NOWPayments refuse les montants sous leur minimum (souvent ≈ 2$ / équivalent €). Augmente le prix du deal.`
-          : `${e("next")}Réessayez une fois la config NOWPayments corrigée (API key, Custody, etc.).`)
+          ? `${e("info")}Montant sous le minimum OxaPay (≈ 0.002 LTC). Augmente légèrement le prix du deal.`
+          : `${e("next")}Réessayez une fois la config OxaPay corrigée (Merchant / Payout API keys).`)
     )
   );
 
@@ -278,7 +278,7 @@ function buildFundsHeldContainer(deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("shield")}Fonds sécurisés\n` +
-        `${e("success")}Le paiement a été reçu et est conservé en **Custody** NOWPayments (escrow).\n\n` +
+        `${e("success")}Le paiement a été reçu et est conservé sur le **solde OxaPay** (escrow).\n\n` +
         `${e("seller")}<@${deal.seller_id}> — livrez le produit à l'acheteur.\n` +
         `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
         `${walletLine}${payoutErrorLine}`
@@ -326,14 +326,10 @@ function buildReleasedContainer(deal) {
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
 
   let payoutText;
-  if (payoutStatus === "awaiting_2fa") {
-    payoutText =
-      `${e("warning")}Payout créé mais en attente de validation 2FA sur NOWPayments.\n` +
-      `${e("staff")}Validez le payout dans le dashboard Custody / Mass Payouts.`;
-  } else if (deal.payout_error) {
+  if (deal.payout_error) {
     payoutText =
       `${e("error")}Échec du payout automatique : \`${deal.payout_error}\`\n` +
-      `${e("staff")}Libérez manuellement depuis Custody vers \`${wallet}\`.`;
+      `${e("staff")}Libérez manuellement depuis le dashboard OxaPay vers \`${wallet}\`.`;
   } else {
     payoutText =
       `${e("success")}Payout initié vers le vendeur.\n` +

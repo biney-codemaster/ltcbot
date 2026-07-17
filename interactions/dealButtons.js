@@ -23,7 +23,7 @@ const {
   payoutToSeller,
   isValidLtcAddress,
   getPaymentStatus,
-} = require("../utils/nowpayments");
+} = require("../utils/oxapay");
 const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/paymentPoller");
 const { formatLtcAmount } = require("../utils/ltcPrice");
 
@@ -42,7 +42,7 @@ function isStaff(member) {
 }
 
 function deny(interaction, message) {
-  return interaction.reply({ content: `${e("error")}${message}`, ephemeral: true });
+  return interaction.reply({ content: `${e("error")}${message}`, flags: MessageFlags.Ephemeral });
 }
 
 async function createAndSendPayment(channel, deal) {
@@ -165,7 +165,7 @@ async function handleConfirmButton(interaction, dealCode) {
     try {
       await createAndSendPayment(interaction.channel, updatedDeal);
     } catch (err) {
-      console.error("Création paiement NOWPayments:", err.message);
+      console.error("Création paiement OxaPay:", err.message);
       db.prepare(
         `UPDATE deals
          SET status = 'payment_failed', updated_at = datetime('now')
@@ -343,7 +343,7 @@ async function handleReleaseButton(interaction, dealCode) {
 
   try {
     const result = await runSellerPayout(deal);
-    const payoutStatus = result.warning ? "awaiting_2fa" : result.status;
+    const payoutStatus = result.status || "processing";
 
     db.prepare(
       `UPDATE deals
@@ -376,10 +376,7 @@ async function handleReleaseButton(interaction, dealCode) {
     });
 
     return interaction.editReply({
-      content:
-        payoutStatus === "awaiting_2fa"
-          ? `${e("warning")}Payout créé — validation 2FA requise sur le dashboard NOWPayments.`
-          : `${e("success")}Payout initié vers le vendeur.`,
+      content: `${e("success")}Payout initié vers le vendeur.`,
     });
   } catch (err) {
     console.error("Payout vendeur:", err.message);
@@ -572,7 +569,7 @@ async function handleStaffResolveButton(interaction, dealCode) {
   await interaction.channel.send({
     content:
       `${e("staff")}Litige #${dealCode} clôturé par <@${interaction.user.id}>.\n` +
-      `${e("warning")}Aucun payout auto n'a été déclenché — gérez un éventuel remboursement depuis Custody.`,
+      `${e("warning")}Aucun payout auto n'a été déclenché — gérez un éventuel remboursement depuis OxaPay.`,
   });
   await interaction.channel.send({
     components: [buildCloseTicketContainer(getDealByCode(dealCode), interaction.user.id)],

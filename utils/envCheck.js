@@ -14,17 +14,12 @@ function validateEnv() {
   if (!process.env.STAFF_ROLE_ID) {
     warnings.push("STAFF_ROLE_ID vide → le staff n'aura pas accès aux salons / fermetures");
   }
-  if (!process.env.NOWPAYMENTS_API_KEY) {
-    errors.push("NOWPAYMENTS_API_KEY manquant (création d'adresses LTC impossible)");
+  if (!process.env.OXAPAY_MERCHANT_API_KEY) {
+    errors.push("OXAPAY_MERCHANT_API_KEY manquant (création d'adresses LTC impossible)");
   }
-  if (!process.env.NOWPAYMENTS_EMAIL || !process.env.NOWPAYMENTS_PASSWORD) {
+  if (!process.env.OXAPAY_PAYOUT_API_KEY) {
     warnings.push(
-      "NOWPAYMENTS_EMAIL / NOWPAYMENTS_PASSWORD manquants → payout vendeur impossible (Custody)"
-    );
-  }
-  if (!process.env.NOWPAYMENTS_2FA_SECRET) {
-    warnings.push(
-      "NOWPAYMENTS_2FA_SECRET manquant → les payouts peuvent rester en attente de 2FA dashboard"
+      "OXAPAY_PAYOUT_API_KEY manquant → payout vendeur impossible (libération des fonds)"
     );
   }
 

@@ -4,7 +4,7 @@ const { createDealChannel } = require("../utils/dealChannel");
 const { generateUniqueDealCode } = require("../utils/dealCode");
 const { buildRoleSelectionContainer } = require("../utils/dealContainer");
 const { fiatToLtc } = require("../utils/ltcPrice");
-const { assertAboveMinAmount } = require("../utils/nowpayments");
+const { assertAboveMinAmount } = require("../utils/oxapay");
 const { MessageFlags } = require("discord.js");
 
 const { e } = config;
@@ -80,7 +80,7 @@ async function handleDealModal(interaction) {
     });
   }
 
-  // --- Minimum NOWPayments (bloquant si l'API répond) ---
+  // --- Minimum OxaPay (~0.002 LTC, bloquant si cours dispo) ---
   try {
     await assertAboveMinAmount({ price, currency, crypto });
   } catch (err) {

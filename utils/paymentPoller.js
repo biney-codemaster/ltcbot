@@ -6,7 +6,7 @@ const {
   isFailedStatus,
   statusLabel,
   resolvePayoutAmount,
-} = require("./nowpayments");
+} = require("./oxapay");
 const {
   buildPaymentContainer,
   buildFundsHeldContainer,
@@ -57,7 +57,7 @@ function getPendingPayoutDeals() {
          AND payout_id IS NOT NULL
          AND payout_id != ''
          AND payout_status IS NOT NULL
-         AND payout_status NOT IN ('finished', 'failed', 'rejected', 'expired')`
+         AND payout_status NOT IN ('finished', 'confirmed', 'failed', 'rejected', 'expired', 'canceled')`
     )
     .all();
 }
@@ -129,8 +129,7 @@ async function refreshDealPayout(deal) {
 
   try {
     const payout = await getPayoutStatus(deal.payout_id);
-    const withdrawal = payout.withdrawals?.[0] || payout;
-    const payoutStatus = withdrawal.status || payout.status || deal.payout_status;
+    const payoutStatus = payout.status || deal.payout_status;
 
     db.prepare(
       `UPDATE deals
@@ -172,7 +171,7 @@ async function publishFundsHeld(deal) {
         const msg = await channel.messages.fetch(deal.payment_message_id);
         await msg.edit({
           components: [
-            buildPaymentContainer({ ...deal, payment_status: deal.payment_status || "finished" }),
+            buildPaymentContainer({ ...deal, payment_status: deal.payment_status || "paid" }),
           ],
           flags: MessageFlags.IsComponentsV2,
         });
