@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node -e \"require('./utils/oxapay'); require('./utils/paymentPoller'); require('./utils/dealContainer'); console.log('ok')\""
+    "test": "node -e \"require('./utils/plisio'); require('./utils/paymentPoller'); require('./utils/dealContainer'); console.log('ok')\""
   },
   "keywords": [],
   "author": "",

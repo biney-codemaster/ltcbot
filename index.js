@@ -140,7 +140,7 @@ function buildDealModal() {
 client.once(Events.ClientReady, () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
   startPaymentPoller(client);
-  console.log("Polling OxaPay démarré (30s).");
+  console.log("Polling Plisio démarré (30s).");
 });
 
 client.on("interactionCreate", async (interaction) => {
