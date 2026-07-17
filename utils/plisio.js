@@ -74,9 +74,20 @@ async function plisioGet(path, params = {}) {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.status === "error") {
-    throw new Error(extractErrorMessage(data, `HTTP ${res.status}`));
+    const raw = extractErrorMessage(data, `HTTP ${res.status}`);
+    if (/secret key|domain is verified/i.test(raw)) {
+      throw new Error(
+        `${raw} — Checks: 1) PLISIO_API_KEY = Secret key du shop (Site Settings), sans guillemets/espaces 2) champ IP Plisio VIDE (sur Pterodactyl l'IP panel ≠ IP sortie) 3) redémarrer le bot après .env 4) shop sauvegardé + White-label`
+      );
+    }
+    throw new Error(raw);
   }
   return data.data !== undefined ? data.data : data;
+}
+
+/** Ping API au démarrage pour valider la clé rapidement. */
+async function pingPlisio() {
+  return plisioGet("/currencies");
 }
 
 /**
@@ -266,5 +277,6 @@ module.exports = {
   isPayoutFailedStatus,
   isValidLtcAddress,
   fiatCurrencyCode,
+  pingPlisio,
   LTC_MIN_AMOUNT,
 };

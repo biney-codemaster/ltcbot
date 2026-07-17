@@ -35,6 +35,7 @@ const {
 require("./database"); // initialise la DB au démarrage
 const { startPaymentPoller } = require("./utils/paymentPoller");
 const { logEnvValidation } = require("./utils/envCheck");
+const { pingPlisio } = require("./utils/plisio");
 
 if (!logEnvValidation()) {
   process.exit(1);
@@ -137,8 +138,14 @@ function buildDealModal() {
   return modal;
 }
 
-client.once(Events.ClientReady, () => {
+client.once(Events.ClientReady, async () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
+  try {
+    await pingPlisio();
+    console.log("Plisio API OK (clé valide).");
+  } catch (err) {
+    console.error("Plisio API KO au démarrage:", err.message);
+  }
   startPaymentPoller(client);
   console.log("Polling Plisio démarré (30s).");
 });
