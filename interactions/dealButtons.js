@@ -23,8 +23,8 @@ const {
   payoutToSeller,
   isValidLtcAddress,
   getPaymentStatus,
-} = require("../utils/nowpayments");
-const { refreshDealPayment, updateFundsHeldMessage, publishFundsHeld } = require("../utils/paymentPoller");
+} = require("../utils/oxapay");
+const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/paymentPoller");
 const { formatLtcAmount } = require("../utils/ltcPrice");
 
 const { e } = config;
@@ -165,7 +165,7 @@ async function handleConfirmButton(interaction, dealCode) {
     try {
       await createAndSendPayment(interaction.channel, updatedDeal);
     } catch (err) {
-      console.error("Création paiement NOWPayments:", err.message);
+      console.error("Création paiement OxaPay:", err.message);
       db.prepare(
         `UPDATE deals
          SET status = 'payment_failed', updated_at = datetime('now')
@@ -276,39 +276,6 @@ async function handleCheckPaymentButton(interaction, dealCode) {
   }
 }
 
-async function handleMockPayButton(interaction, dealCode) {
-  if (!config.mockPayments) {
-    return deny(interaction, "Le mode test n'est pas activé (ESCROW_MOCK_PAYMENTS).");
-  }
-
-  const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
-  if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
-  }
-  if (deal.status !== "awaiting_payment") {
-    return deny(interaction, "Ce deal n'attend pas de paiement.");
-  }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-  db.prepare(
-    `UPDATE deals
-     SET status = 'funds_held',
-         payment_status = 'finished',
-         paid_at = datetime('now'),
-         updated_at = datetime('now')
-     WHERE deal_code = ?`
-  ).run(dealCode);
-
-  const updated = getDealByCode(dealCode);
-  await publishFundsHeld(updated);
-
-  return interaction.editReply({
-    content: `${e("success")}Paiement simulé. Les fonds sont maintenant en escrow (mode test).`,
-  });
-}
-
 async function handleRegenPaymentButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
@@ -376,7 +343,7 @@ async function handleReleaseButton(interaction, dealCode) {
 
   try {
     const result = await runSellerPayout(deal);
-    const payoutStatus = result.warning ? "awaiting_2fa" : result.status;
+    const payoutStatus = result.status || "processing";
 
     db.prepare(
       `UPDATE deals
@@ -409,10 +376,7 @@ async function handleReleaseButton(interaction, dealCode) {
     });
 
     return interaction.editReply({
-      content:
-        payoutStatus === "awaiting_2fa"
-          ? `${e("warning")}Payout créé — validation 2FA requise sur le dashboard NOWPayments.`
-          : `${e("success")}Payout initié vers le vendeur.`,
+      content: `${e("success")}Payout initié vers le vendeur.`,
     });
   } catch (err) {
     console.error("Payout vendeur:", err.message);
@@ -605,7 +569,7 @@ async function handleStaffResolveButton(interaction, dealCode) {
   await interaction.channel.send({
     content:
       `${e("staff")}Litige #${dealCode} clôturé par <@${interaction.user.id}>.\n` +
-      `${e("warning")}Aucun payout auto n'a été déclenché — gérez un éventuel remboursement depuis Custody.`,
+      `${e("warning")}Aucun payout auto n'a été déclenché — gérez un éventuel remboursement depuis OxaPay.`,
   });
   await interaction.channel.send({
     components: [buildCloseTicketContainer(getDealByCode(dealCode), interaction.user.id)],
@@ -635,7 +599,6 @@ module.exports = {
   handleWrongRolesButton,
   handleCancelButton,
   handleCheckPaymentButton,
-  handleMockPayButton,
   handleRegenPaymentButton,
   handleReleaseButton,
   handleSellerWalletButton,

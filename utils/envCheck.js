@@ -14,27 +14,13 @@ function validateEnv() {
   if (!process.env.STAFF_ROLE_ID) {
     warnings.push("STAFF_ROLE_ID vide → le staff n'aura pas accès aux salons / fermetures");
   }
-  const mock =
-    String(process.env.ESCROW_MOCK_PAYMENTS || "").toLowerCase() === "true" ||
-    process.env.ESCROW_MOCK_PAYMENTS === "1";
-
-  if (!process.env.NOWPAYMENTS_API_KEY && !mock) {
-    errors.push("NOWPAYMENTS_API_KEY manquant (création d'adresses LTC impossible)");
+  if (!process.env.OXAPAY_MERCHANT_API_KEY) {
+    errors.push("OXAPAY_MERCHANT_API_KEY manquant (création d'adresses LTC impossible)");
   }
-  if (!process.env.NOWPAYMENTS_EMAIL || !process.env.NOWPAYMENTS_PASSWORD) {
-    if (!mock) {
-      warnings.push(
-        "NOWPAYMENTS_EMAIL / NOWPAYMENTS_PASSWORD manquants → payout vendeur impossible (Custody)"
-      );
-    }
-  }
-  if (!process.env.NOWPAYMENTS_2FA_SECRET && !mock) {
+  if (!process.env.OXAPAY_PAYOUT_API_KEY) {
     warnings.push(
-      "NOWPAYMENTS_2FA_SECRET manquant → les payouts peuvent rester en attente de 2FA dashboard"
+      "OXAPAY_PAYOUT_API_KEY manquant → payout vendeur impossible (libération des fonds)"
     );
-  }
-  if (mock) {
-    warnings.push("ESCROW_MOCK_PAYMENTS=true → mode test (pas de vrai LTC)");
   }
 
   return { ok: errors.length === 0, errors, warnings };

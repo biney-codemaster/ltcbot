@@ -9,7 +9,7 @@ const {
 } = require("discord.js");
 const config = require("../config");
 const { formatLtcAmount } = require("./ltcPrice");
-const { statusLabel } = require("./nowpayments");
+const { statusLabel } = require("./oxapay");
 
 const { e, emojis } = config;
 
@@ -162,56 +162,46 @@ function buildPaymentContainer(deal) {
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const address = deal.pay_address || "*adresse en cours de génération*";
   const status = statusLabel(deal.payment_status || "waiting");
-  const mockHint = config.mockPayments
-    ? `\n\n${e("info")}**Mode test** activé (\`ESCROW_MOCK_PAYMENTS=true\`) — aucun vrai LTC requis. Clique **Simuler paiement reçu**.`
-    : "";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("payment")}Paiement escrow\n` +
-        `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.\n\n` +
-        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
-        `${e("wallet")}**Adresse**\n\`\`\`\n${address}\n\`\`\`\n` +
-        `${e("clock")}**Statut** — ${status}` +
-        mockHint +
-        (config.mockPayments
-          ? ""
-          : `\n\n${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`)
+      `## ${e("payment")}Paiement escrow
+` +
+        `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.
+
+` +
+        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`
+` +
+        `${e("wallet")}**Adresse**
+\`\`\`
+${address}
+\`\`\`
+` +
+        `${e("clock")}**Statut** — ${status}
+
+` +
+        `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`
     )
   );
 
-  const buttons = [];
-
-  if (config.mockPayments) {
-    buttons.push(
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
       applyEmoji(
         new ButtonBuilder()
-          .setCustomId(`deal_mock_pay:${deal.deal_code}`)
-          .setLabel("Simuler paiement reçu")
-          .setStyle(ButtonStyle.Success),
-        "success"
+          .setCustomId(`deal_check_payment:${deal.deal_code}`)
+          .setLabel("Vérifier le paiement")
+          .setStyle(ButtonStyle.Primary),
+        "payment"
+      ),
+      applyEmoji(
+        new ButtonBuilder()
+          .setCustomId(`deal_dispute:${deal.deal_code}`)
+          .setLabel("Ouvrir un litige")
+          .setStyle(ButtonStyle.Danger),
+        "dispute"
       )
-    );
-  }
-
-  buttons.push(
-    applyEmoji(
-      new ButtonBuilder()
-        .setCustomId(`deal_check_payment:${deal.deal_code}`)
-        .setLabel("Vérifier le paiement")
-        .setStyle(ButtonStyle.Primary),
-      "payment"
-    ),
-    applyEmoji(
-      new ButtonBuilder()
-        .setCustomId(`deal_dispute:${deal.deal_code}`)
-        .setLabel("Ouvrir un litige")
-        .setStyle(ButtonStyle.Danger),
-      "dispute"
     )
   );
-
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(...buttons));
   return container;
 }
 
@@ -220,11 +210,18 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   const container = new ContainerBuilder();
   addStandardHeader(container, deal);
 
+  const isMin =
+    /Bloqué par l'API OxaPay|montant trop|too small|minimum|BELOW_MINIMUM/i.test(
+      String(errorMessage || "")
+    );
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("error")}Adresse de paiement indisponible\n` +
         `Erreur : \`${errorMessage || "inconnue"}\`\n\n` +
-        `${e("next")}Réessayez la génération une fois la config NOWPayments corrigée.`
+        (isMin
+          ? `${e("info")}Montant sous le minimum OxaPay (≈ 0.002 LTC). Augmente légèrement le prix du deal.`
+          : `${e("next")}Réessayez une fois la config OxaPay corrigée (Merchant / Payout API keys).`)
     )
   );
 
@@ -290,7 +287,7 @@ function buildFundsHeldContainer(deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("shield")}Fonds sécurisés\n` +
-        `${e("success")}Le paiement a été reçu et est conservé en **Custody** NOWPayments (escrow).\n\n` +
+        `${e("success")}Le paiement a été reçu et est conservé sur le **solde OxaPay** (escrow).\n\n` +
         `${e("seller")}<@${deal.seller_id}> — livrez le produit à l'acheteur.\n` +
         `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
         `${walletLine}${payoutErrorLine}`
@@ -338,14 +335,10 @@ function buildReleasedContainer(deal) {
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
 
   let payoutText;
-  if (payoutStatus === "awaiting_2fa") {
-    payoutText =
-      `${e("warning")}Payout créé mais en attente de validation 2FA sur NOWPayments.\n` +
-      `${e("staff")}Validez le payout dans le dashboard Custody / Mass Payouts.`;
-  } else if (deal.payout_error) {
+  if (deal.payout_error) {
     payoutText =
       `${e("error")}Échec du payout automatique : \`${deal.payout_error}\`\n` +
-      `${e("staff")}Libérez manuellement depuis Custody vers \`${wallet}\`.`;
+      `${e("staff")}Libérez manuellement depuis le dashboard OxaPay vers \`${wallet}\`.`;
   } else {
     payoutText =
       `${e("success")}Payout initié vers le vendeur.\n` +

@@ -22,7 +22,6 @@ const {
   handleWrongRolesButton,
   handleCancelButton,
   handleCheckPaymentButton,
-  handleMockPayButton,
   handleRegenPaymentButton,
   handleReleaseButton,
   handleSellerWalletButton,
@@ -140,11 +139,8 @@ function buildDealModal() {
 
 client.once(Events.ClientReady, () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
-  if (config.mockPayments) {
-    console.log("MODE TEST: ESCROW_MOCK_PAYMENTS=true (paiements simulés, pas de vrai LTC)");
-  }
   startPaymentPoller(client);
-  console.log("Polling NOWPayments démarré (30s).");
+  console.log("Polling OxaPay démarré (30s).");
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -182,10 +178,6 @@ client.on("interactionCreate", async (interaction) => {
       await handleCheckPaymentButton(interaction, dealCode);
     }
 
-    if (interaction.isButton() && interaction.customId.startsWith("deal_mock_pay:")) {
-      const [, dealCode] = interaction.customId.split(":");
-      await handleMockPayButton(interaction, dealCode);
-    }
 
     if (interaction.isButton() && interaction.customId.startsWith("deal_regen_payment:")) {
       const [, dealCode] = interaction.customId.split(":");
