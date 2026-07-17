@@ -107,5 +107,10 @@ try {
 } catch {
   // colonne déjà présente
 }
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN funds_held_message_id TEXT`);
+} catch {
+  // colonne déjà présente
+}
 
 module.exports = db;

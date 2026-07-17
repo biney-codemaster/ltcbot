@@ -12,13 +12,19 @@ const {
   buildConfirmationContainer,
   buildFinalRecapContainer,
   buildPaymentContainer,
+  buildPaymentSetupErrorContainer,
   buildFundsHeldContainer,
   buildReleasedContainer,
   buildDisputeContainer,
   buildCloseTicketContainer,
 } = require("../utils/dealContainer");
-const { createLtcPayment, payoutToSeller, isValidLtcAddress } = require("../utils/nowpayments");
-const { refreshDealPayment } = require("../utils/paymentPoller");
+const {
+  createLtcPayment,
+  payoutToSeller,
+  isValidLtcAddress,
+  getPaymentStatus,
+} = require("../utils/nowpayments");
+const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/paymentPoller");
 const { formatLtcAmount } = require("../utils/ltcPrice");
 
 const { e } = config;
@@ -39,7 +45,7 @@ function deny(interaction, message) {
   return interaction.reply({ content: `${e("error")}${message}`, ephemeral: true });
 }
 
-async function createAndSendPayment(interaction, deal) {
+async function createAndSendPayment(channel, deal) {
   const payment = await createLtcPayment(deal);
   const payAmount = payment.pay_amount != null ? Number(payment.pay_amount) : deal.pay_amount;
 
@@ -50,6 +56,7 @@ async function createAndSendPayment(interaction, deal) {
          pay_amount = @pay_amount,
          payment_status = @payment_status,
          status = 'awaiting_payment',
+         payout_error = NULL,
          updated_at = datetime('now')
      WHERE deal_code = @deal_code`
   ).run({
@@ -61,7 +68,7 @@ async function createAndSendPayment(interaction, deal) {
   });
 
   const updatedDeal = getDealByCode(deal.deal_code);
-  const paymentMessage = await interaction.channel.send({
+  const paymentMessage = await channel.send({
     components: [buildPaymentContainer(updatedDeal)],
     flags: MessageFlags.IsComponentsV2,
   });
@@ -76,9 +83,18 @@ async function createAndSendPayment(interaction, deal) {
   return getDealByCode(deal.deal_code);
 }
 
-/**
- * Clic sur "Acheteur" ou "Vendeur".
- */
+async function runSellerPayout(deal) {
+  let paymentDetails = null;
+  if (deal.payment_id) {
+    try {
+      paymentDetails = await getPaymentStatus(deal.payment_id);
+    } catch (err) {
+      console.warn("Impossible de relire le paiement avant payout:", err.message);
+    }
+  }
+  return payoutToSeller(deal, paymentDetails);
+}
+
 async function handleRoleButton(interaction, role, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
@@ -121,9 +137,6 @@ async function handleRoleButton(interaction, role, dealCode) {
   }
 }
 
-/**
- * Clic sur "Confirmer".
- */
 async function handleConfirmButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
@@ -142,9 +155,6 @@ async function handleConfirmButton(interaction, dealCode) {
   let updatedDeal = getDealByCode(dealCode);
 
   if (updatedDeal.initiator_confirmed && updatedDeal.partner_confirmed) {
-    db.prepare(`UPDATE deals SET status = 'awaiting_payment' WHERE deal_code = ?`).run(dealCode);
-    updatedDeal = getDealByCode(dealCode);
-
     await interaction.update({ components: [buildConfirmationContainer(updatedDeal)] });
 
     await interaction.channel.send({
@@ -153,14 +163,18 @@ async function handleConfirmButton(interaction, dealCode) {
     });
 
     try {
-      await createAndSendPayment(interaction, updatedDeal);
+      await createAndSendPayment(interaction.channel, updatedDeal);
     } catch (err) {
       console.error("Création paiement NOWPayments:", err.message);
+      db.prepare(
+        `UPDATE deals
+         SET status = 'payment_failed', updated_at = datetime('now')
+         WHERE deal_code = ?`
+      ).run(dealCode);
+      const failedDeal = getDealByCode(dealCode);
       await interaction.channel.send({
-        content:
-          `${e("error")}Impossible de générer l'adresse de paiement pour le moment.\n` +
-          `Erreur : \`${err.message}\`\n` +
-          `${e("staff")}Vérifiez la clé NOWPAYMENTS_API_KEY puis réessayez.`,
+        components: [buildPaymentSetupErrorContainer(failedDeal, err.message)],
+        flags: MessageFlags.IsComponentsV2,
       });
     }
     return;
@@ -169,14 +183,14 @@ async function handleConfirmButton(interaction, dealCode) {
   await interaction.update({ components: [buildConfirmationContainer(updatedDeal)] });
 }
 
-/**
- * Clic sur "Rôles incorrects": réinitialise et renvoie un NOUVEAU container de sélection.
- */
 async function handleWrongRolesButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
   if (!isParticipant(deal, interaction.user.id)) {
     return deny(interaction, "Ce deal ne te concerne pas.");
+  }
+  if (deal.status !== "pending_confirmation") {
+    return deny(interaction, "Les rôles ne peuvent plus être modifiés.");
   }
 
   db.prepare(`
@@ -186,7 +200,6 @@ async function handleWrongRolesButton(interaction, dealCode) {
   `).run(dealCode);
 
   const updatedDeal = getDealByCode(dealCode);
-
   await interaction.update({ components: [] });
 
   const newRoleMessage = await interaction.channel.send({
@@ -200,33 +213,30 @@ async function handleWrongRolesButton(interaction, dealCode) {
   });
 }
 
-/**
- * Clic sur "Annuler" (container étape 1): marque le deal annulé, envoie le container de fermeture.
- */
 async function handleCancelButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
   if (!isParticipant(deal, interaction.user.id)) {
     return deny(interaction, "Ce deal ne te concerne pas.");
   }
-  if (!["pending_confirmation", "awaiting_payment"].includes(deal.status)) {
-    return deny(interaction, "Ce deal ne peut plus être annulé à ce stade.");
+  // Annulation libre uniquement avant qu'une invoice existe
+  if (deal.status !== "pending_confirmation" || deal.payment_id) {
+    return deny(
+      interaction,
+      "Annulation impossible après génération du paiement. Ouvre un litige ou contacte le staff."
+    );
   }
 
   db.prepare(`UPDATE deals SET status = 'cancelled' WHERE deal_code = ?`).run(dealCode);
   const updatedDeal = getDealByCode(dealCode);
 
   await interaction.update({ components: [buildRoleSelectionContainer(updatedDeal)] });
-
   await interaction.channel.send({
     components: [buildCloseTicketContainer(updatedDeal, interaction.user.id)],
     flags: MessageFlags.IsComponentsV2,
   });
 }
 
-/**
- * Vérifie manuellement le statut du paiement NOWPayments.
- */
 async function handleCheckPaymentButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
@@ -246,6 +256,11 @@ async function handleCheckPaymentButton(interaction, dealCode) {
         content: `${e("success")}Paiement reçu. Les fonds sont maintenant sécurisés en escrow.`,
       });
     }
+    if (updated.status === "payment_failed") {
+      return interaction.editReply({
+        content: `${e("error")}Paiement échoué/expiré. Tu peux régénérer une adresse.`,
+      });
+    }
 
     const amount = formatLtcAmount(Number(updated.pay_amount)) || "—";
     return interaction.editReply({
@@ -261,14 +276,58 @@ async function handleCheckPaymentButton(interaction, dealCode) {
   }
 }
 
-/**
- * Acheteur confirme la réception → payout Custody vers le vendeur.
- */
+async function handleRegenPaymentButton(interaction, dealCode) {
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
+    return deny(interaction, "Ce deal ne te concerne pas.");
+  }
+  if (!["payment_failed", "awaiting_payment"].includes(deal.status) && deal.payment_id) {
+    // awaiting without usable payment also ok via payment_failed
+  }
+  if (!["payment_failed", "awaiting_payment"].includes(deal.status)) {
+    return deny(interaction, "Impossible de régénérer une adresse à ce stade.");
+  }
+
+  await interaction.deferUpdate();
+
+  try {
+    // Invalide l'ancienne invoice côté bot
+    db.prepare(
+      `UPDATE deals
+       SET payment_id = NULL,
+           pay_address = NULL,
+           payment_status = NULL,
+           payment_message_id = NULL,
+           status = 'awaiting_payment',
+           updated_at = datetime('now')
+       WHERE deal_code = ?`
+    ).run(dealCode);
+
+    const fresh = getDealByCode(dealCode);
+    await interaction.message.edit({ components: [] }).catch(() => {});
+    await createAndSendPayment(interaction.channel, fresh);
+  } catch (err) {
+    console.error("Régénération paiement:", err.message);
+    const failedDeal = getDealByCode(dealCode);
+    db.prepare(
+      `UPDATE deals SET status = 'payment_failed', updated_at = datetime('now') WHERE deal_code = ?`
+    ).run(dealCode);
+    await interaction.channel.send({
+      components: [buildPaymentSetupErrorContainer(failedDeal, err.message)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+}
+
 async function handleReleaseButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
-  if (deal.status !== "funds_held") {
-    return deny(interaction, "Les fonds ne sont pas encore en escrow.");
+  if (deal.status !== "funds_held" && !(deal.status === "disputed" && isStaff(interaction.member))) {
+    // release from funds_held only here; staff dispute uses staff_release
+    if (deal.status !== "funds_held") {
+      return deny(interaction, "Les fonds ne sont pas encore en escrow.");
+    }
   }
   if (interaction.user.id !== deal.buyer_id && !isStaff(interaction.member)) {
     return deny(interaction, "Seul l'acheteur (ou le staff) peut libérer les fonds.");
@@ -280,56 +339,73 @@ async function handleReleaseButton(interaction, dealCode) {
     );
   }
 
-  await interaction.deferUpdate();
-
-  let payoutId = null;
-  let payoutStatus = null;
-  let payoutError = null;
+  await interaction.deferReply({ ephemeral: true });
 
   try {
-    const result = await payoutToSeller(deal);
-    payoutId = result.payoutId;
-    payoutStatus = result.status;
-    if (result.warning) {
-      payoutStatus = "awaiting_2fa";
+    const result = await runSellerPayout(deal);
+    const payoutStatus = result.warning ? "awaiting_2fa" : result.status;
+
+    db.prepare(
+      `UPDATE deals
+       SET status = 'released',
+           payout_id = @payout_id,
+           payout_status = @payout_status,
+           payout_error = NULL,
+           updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({
+      payout_id: result.payoutId,
+      payout_status: payoutStatus,
+      deal_code: dealCode,
+    });
+
+    const updatedDeal = getDealByCode(dealCode);
+
+    if (deal.funds_held_message_id) {
+      try {
+        const msg = await interaction.channel.messages.fetch(deal.funds_held_message_id);
+        await msg.edit({ components: [] });
+      } catch {
+        // ignore
+      }
     }
+
+    await interaction.channel.send({
+      components: [buildReleasedContainer(updatedDeal)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+
+    return interaction.editReply({
+      content:
+        payoutStatus === "awaiting_2fa"
+          ? `${e("warning")}Payout créé — validation 2FA requise sur le dashboard NOWPayments.`
+          : `${e("success")}Payout initié vers le vendeur.`,
+    });
   } catch (err) {
     console.error("Payout vendeur:", err.message);
-    payoutError = err.message;
-    payoutStatus = "failed";
+    db.prepare(
+      `UPDATE deals
+       SET payout_error = @payout_error,
+           payout_status = 'failed',
+           updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({ payout_error: err.message, deal_code: dealCode });
+
+    const updatedDeal = getDealByCode(dealCode);
+    await updateFundsHeldMessage(updatedDeal);
+
+    return interaction.editReply({
+      content:
+        `${e("error")}Payout échoué : \`${err.message}\`\n` +
+        `Le deal reste en **fonds sécurisés** — tu peux réessayer.`,
+    });
   }
-
-  db.prepare(
-    `UPDATE deals
-     SET status = 'released',
-         payout_id = @payout_id,
-         payout_status = @payout_status,
-         payout_error = @payout_error,
-         updated_at = datetime('now')
-     WHERE deal_code = @deal_code`
-  ).run({
-    payout_id: payoutId,
-    payout_status: payoutStatus,
-    payout_error: payoutError,
-    deal_code: dealCode,
-  });
-
-  const updatedDeal = getDealByCode(dealCode);
-
-  await interaction.editReply({ components: [] });
-  await interaction.channel.send({
-    components: [buildReleasedContainer(updatedDeal)],
-    flags: MessageFlags.IsComponentsV2,
-  });
 }
 
-/**
- * Vendeur (ou staff) ouvre le modal d'adresse LTC.
- */
 async function handleSellerWalletButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
-  if (deal.status !== "funds_held") {
+  if (!["funds_held", "disputed"].includes(deal.status)) {
     return deny(interaction, "L'adresse ne peut être définie qu'une fois les fonds sécurisés.");
   }
   if (interaction.user.id !== deal.seller_id && !isStaff(interaction.member)) {
@@ -359,9 +435,6 @@ async function handleSellerWalletButton(interaction, dealCode) {
   await interaction.showModal(modal);
 }
 
-/**
- * Enregistre l'adresse LTC du vendeur.
- */
 async function handleSellerWalletModal(interaction) {
   const dealCode = interaction.customId.split(":")[1];
   const deal = getDealByCode(dealCode);
@@ -391,33 +464,16 @@ async function handleSellerWalletModal(interaction) {
     ephemeral: true,
   });
 
-  // Met à jour le message funds_held si possible (message de l'interaction précédente non dispo)
-  try {
-    const messages = await interaction.channel.messages.fetch({ limit: 15 });
-    const fundsMsg = messages.find(
-      (m) =>
-        m.author.id === interaction.client.user.id &&
-        m.components?.length &&
-        JSON.stringify(m.components).includes(`deal_release:${dealCode}`)
-    );
-    if (fundsMsg) {
-      await fundsMsg.edit({
-        components: [buildFundsHeldContainer(updatedDeal)],
-        flags: MessageFlags.IsComponentsV2,
-      });
-    }
-  } catch (err) {
-    console.error("Maj container funds_held:", err.message);
+  const updated = await updateFundsHeldMessage(updatedDeal);
+  if (!updated && updatedDeal.status === "disputed") {
+    // rien
   }
 }
 
-/**
- * Ouvre le modal de litige.
- */
 async function handleDisputeButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
-  if (!["funds_held", "awaiting_payment"].includes(deal.status)) {
+  if (!["funds_held", "awaiting_payment", "payment_failed"].includes(deal.status)) {
     return deny(interaction, "Aucun litige ne peut être ouvert à ce stade.");
   }
   if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
@@ -443,9 +499,6 @@ async function handleDisputeButton(interaction, dealCode) {
   await interaction.showModal(modal);
 }
 
-/**
- * Soumission du modal litige.
- */
 async function handleDisputeModal(interaction) {
   const dealCode = interaction.customId.split(":")[1];
   const deal = getDealByCode(dealCode);
@@ -474,9 +527,59 @@ async function handleDisputeModal(interaction) {
   });
 }
 
-/**
- * Clic sur "Fermer le salon": réservé au staff.
- */
+async function handleStaffReleaseButton(interaction, dealCode) {
+  if (!isStaff(interaction.member)) {
+    return deny(interaction, "Réservé au staff.");
+  }
+
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (deal.status !== "disputed" && deal.status !== "funds_held") {
+    return deny(interaction, "Libération staff impossible à ce stade.");
+  }
+  if (!deal.seller_wallet) {
+    return deny(interaction, "Le vendeur doit d'abord avoir une adresse LTC.");
+  }
+
+  // Réutilise la logique release
+  db.prepare(
+    `UPDATE deals SET status = 'funds_held', mediator_id = @mediator_id WHERE deal_code = @deal_code`
+  ).run({ mediator_id: interaction.user.id, deal_code: dealCode });
+
+  return handleReleaseButton(interaction, dealCode);
+}
+
+async function handleStaffResolveButton(interaction, dealCode) {
+  if (!isStaff(interaction.member)) {
+    return deny(interaction, "Réservé au staff.");
+  }
+
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (deal.status !== "disputed") {
+    return deny(interaction, "Ce deal n'est pas en litige.");
+  }
+
+  db.prepare(
+    `UPDATE deals
+     SET status = 'cancelled',
+         mediator_id = @mediator_id,
+         updated_at = datetime('now')
+     WHERE deal_code = @deal_code`
+  ).run({ mediator_id: interaction.user.id, deal_code: dealCode });
+
+  await interaction.update({ components: [] });
+  await interaction.channel.send({
+    content:
+      `${e("staff")}Litige #${dealCode} clôturé par <@${interaction.user.id}>.\n` +
+      `${e("warning")}Aucun payout auto n'a été déclenché — gérez un éventuel remboursement depuis Custody.`,
+  });
+  await interaction.channel.send({
+    components: [buildCloseTicketContainer(getDealByCode(dealCode), interaction.user.id)],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
 async function handleCloseButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
@@ -499,11 +602,14 @@ module.exports = {
   handleWrongRolesButton,
   handleCancelButton,
   handleCheckPaymentButton,
+  handleRegenPaymentButton,
   handleReleaseButton,
   handleSellerWalletButton,
   handleSellerWalletModal,
   handleDisputeButton,
   handleDisputeModal,
+  handleStaffReleaseButton,
+  handleStaffResolveButton,
   handleCloseButton,
   getDealByCode,
 };
