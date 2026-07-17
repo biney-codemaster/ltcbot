@@ -9,6 +9,7 @@ const {
 } = require("discord.js");
 const config = require("../config");
 const { formatLtcAmount } = require("./ltcPrice");
+const { statusLabel } = require("./nowpayments");
 
 const { e, emojis } = config;
 
@@ -39,12 +40,7 @@ function dealOverview(deal) {
   );
 }
 
-/**
- * Étape 1: sélection des rôles (Acheteur / Vendeur) + Annuler.
- */
-function buildRoleSelectionContainer(deal) {
-  const container = new ContainerBuilder();
-
+function addStandardHeader(container, deal) {
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealTitle(deal)));
   container.addSeparatorComponents(
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
@@ -53,6 +49,11 @@ function buildRoleSelectionContainer(deal) {
   container.addSeparatorComponents(
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
   );
+}
+
+function buildRoleSelectionContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
 
   const buyerLabel = deal.buyer_id ? `<@${deal.buyer_id}>` : "*en attente*";
   const sellerLabel = deal.seller_id ? `<@${deal.seller_id}>` : "*en attente*";
@@ -97,21 +98,10 @@ function buildRoleSelectionContainer(deal) {
   return container;
 }
 
-/**
- * Étape 2: récap des rôles + confirmation des deux participants.
- */
 function buildConfirmationContainer(deal) {
   const container = new ContainerBuilder();
   const confirmCount = (deal.initiator_confirmed ? 1 : 0) + (deal.partner_confirmed ? 1 : 0);
-
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealTitle(deal)));
-  container.addSeparatorComponents(
-    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
-  );
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealOverview(deal)));
-  container.addSeparatorComponents(
-    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
-  );
+  addStandardHeader(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -148,20 +138,9 @@ function buildConfirmationContainer(deal) {
   return container;
 }
 
-/**
- * Étape 3: récap final une fois les rôles confirmés par les deux parties.
- */
 function buildFinalRecapContainer(deal) {
   const container = new ContainerBuilder();
-
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealTitle(deal)));
-  container.addSeparatorComponents(
-    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
-  );
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(dealOverview(deal)));
-  container.addSeparatorComponents(
-    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
-  );
+  addStandardHeader(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -176,10 +155,139 @@ function buildFinalRecapContainer(deal) {
   return container;
 }
 
-/**
- * Container envoyé quand un participant annule le deal.
- * Seul le staff peut effectivement fermer le salon.
- */
+function buildPaymentContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const address = deal.pay_address || "*adresse en cours de génération*";
+  const status = statusLabel(deal.payment_status || "waiting");
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("payment")}Paiement escrow\n` +
+        `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.\n\n` +
+        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
+        `${e("wallet")}**Adresse**\n\`\`\`\n${address}\n\`\`\`\n` +
+        `${e("clock")}**Statut** — ${status}\n\n` +
+        `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`
+    )
+  );
+
+  const checkButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_check_payment:${deal.deal_code}`)
+      .setLabel("Vérifier le paiement")
+      .setStyle(ButtonStyle.Primary),
+    "payment"
+  );
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(checkButton));
+  return container;
+}
+
+function buildPaymentFailedContainer(deal, reason) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("error")}Paiement non finalisé\n` +
+        `Statut : **${reason}**\n\n` +
+        `${e("staff")}Contactez le staff si vous avez déjà envoyé des fonds.`
+    )
+  );
+
+  return container;
+}
+
+function buildFundsHeldContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("shield")}Fonds sécurisés\n` +
+        `${e("success")}Le paiement a été reçu et est conservé en escrow.\n\n` +
+        `${e("seller")}<@${deal.seller_id}> — livrez le produit à l'acheteur.\n` +
+        `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
+        `${e("info")}La libération des fonds vers le vendeur sera effectuée après confirmation.`
+    )
+  );
+
+  const releaseButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_release:${deal.deal_code}`)
+      .setLabel("Produit reçu — libérer")
+      .setStyle(ButtonStyle.Success),
+    "release"
+  );
+
+  const disputeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_dispute:${deal.deal_code}`)
+      .setLabel("Ouvrir un litige")
+      .setStyle(ButtonStyle.Danger),
+    "dispute"
+  );
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(releaseButton, disputeButton)
+  );
+
+  return container;
+}
+
+function buildReleasedContainer(deal) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("release")}Deal terminé\n` +
+        `${e("success")}L'acheteur a confirmé la réception du produit.\n` +
+        `${e("money")}Les fonds peuvent être libérés au vendeur <@${deal.seller_id}>.\n\n` +
+        `${e("staff")}Le staff peut maintenant fermer ce salon.`
+    )
+  );
+
+  const closeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_close:${deal.deal_code}`)
+      .setLabel("Fermer le salon")
+      .setStyle(ButtonStyle.Danger),
+    "close"
+  );
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
+  return container;
+}
+
+function buildDisputeContainer(deal, openedBy) {
+  const container = new ContainerBuilder();
+  addStandardHeader(container, deal);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("dispute")}Litige ouvert\n` +
+        `Ouvert par <@${openedBy}>.\n\n` +
+        `**Motif**\n${deal.dispute_reason || "*non précisé*"}\n\n` +
+        `${e("staff")}Un médiateur doit intervenir avant toute libération des fonds.`
+    )
+  );
+
+  const closeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_close:${deal.deal_code}`)
+      .setLabel("Fermer le salon")
+      .setStyle(ButtonStyle.Danger),
+    "close"
+  );
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
+  return container;
+}
+
 function buildCloseTicketContainer(deal, cancelledBy) {
   const container = new ContainerBuilder();
 
@@ -206,7 +314,6 @@ function buildCloseTicketContainer(deal, cancelledBy) {
   );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
-
   return container;
 }
 
@@ -214,5 +321,10 @@ module.exports = {
   buildRoleSelectionContainer,
   buildConfirmationContainer,
   buildFinalRecapContainer,
+  buildPaymentContainer,
+  buildPaymentFailedContainer,
+  buildFundsHeldContainer,
+  buildReleasedContainer,
+  buildDisputeContainer,
   buildCloseTicketContainer,
 };

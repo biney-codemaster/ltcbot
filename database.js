@@ -77,5 +77,15 @@ try {
 } catch {
   // colonne déjà présente
 }
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN payment_status TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN payment_message_id TEXT`);
+} catch {
+  // colonne déjà présente
+}
 
 module.exports = db;
