@@ -194,18 +194,6 @@ function buildPaymentContainer(deal) {
     )
   );
 
-  return container;
-}
-
-/** Boutons réservés à l'acheteur (paiement). */
-function buildBuyerPaymentActionsContainer(deal) {
-  const container = new ContainerBuilder();
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `## ${e("buyer")}Actions acheteur\n` +
-        `Uniquement pour <@${deal.buyer_id}>.`
-    )
-  );
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       applyEmoji(
@@ -267,7 +255,7 @@ function buildPaymentFailedContainer(deal, reason) {
     new TextDisplayBuilder().setContent(
       `## ${e("error")}Paiement non finalisé\n` +
         `Statut : **${reason}**\n\n` +
-        `${e("buyer")}Actions réservées à <@${deal.buyer_id}>.`
+        `${e("next")}Vous pouvez générer une nouvelle adresse, ou contacter le staff si des fonds ont déjà été envoyés.`
     )
   );
 
@@ -316,67 +304,35 @@ function buildFundsHeldContainer(deal) {
     )
   );
 
-  return container;
-}
+  const walletButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
+      .setLabel(deal.seller_wallet ? "Modifier mon adresse" : "Adresse de retrait")
+      .setStyle(ButtonStyle.Secondary),
+    "wallet"
+  );
 
-/** Boutons réservés au vendeur. */
-function buildSellerActionsContainer(deal) {
-  const container = new ContainerBuilder();
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `## ${e("seller")}Actions vendeur\n` +
-        `Uniquement pour <@${deal.seller_id}>.`
-    )
+  const releaseButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_release:${deal.deal_code}`)
+      .setLabel(deal.payout_error ? "Réessayer la libération" : "Produit reçu — libérer")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!deal.seller_wallet),
+    "release"
   );
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(
-      applyEmoji(
-        new ButtonBuilder()
-          .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
-          .setLabel(deal.seller_wallet ? "Modifier mon adresse" : "Adresse de retrait")
-          .setStyle(ButtonStyle.Secondary),
-        "wallet"
-      ),
-      applyEmoji(
-        new ButtonBuilder()
-          .setCustomId(`deal_dispute:${deal.deal_code}`)
-          .setLabel("Ouvrir un litige")
-          .setStyle(ButtonStyle.Danger),
-        "dispute"
-      )
-    )
-  );
-  return container;
-}
 
-/** Boutons réservés à l'acheteur (après fonds sécurisés). */
-function buildBuyerFundsActionsContainer(deal) {
-  const container = new ContainerBuilder();
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `## ${e("buyer")}Actions acheteur\n` +
-        `Uniquement pour <@${deal.buyer_id}>.`
-    )
+  const disputeButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_dispute:${deal.deal_code}`)
+      .setLabel("Ouvrir un litige")
+      .setStyle(ButtonStyle.Danger),
+    "dispute"
   );
+
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(
-      applyEmoji(
-        new ButtonBuilder()
-          .setCustomId(`deal_release:${deal.deal_code}`)
-          .setLabel(deal.payout_error ? "Réessayer la libération" : "Produit reçu — libérer")
-          .setStyle(ButtonStyle.Success)
-          .setDisabled(!deal.seller_wallet),
-        "release"
-      ),
-      applyEmoji(
-        new ButtonBuilder()
-          .setCustomId(`deal_dispute:${deal.deal_code}`)
-          .setLabel("Ouvrir un litige")
-          .setStyle(ButtonStyle.Danger),
-        "dispute"
-      )
-    )
+    new ActionRowBuilder().addComponents(walletButton, releaseButton, disputeButton)
   );
+
   return container;
 }
 
@@ -599,12 +555,9 @@ module.exports = {
   buildConfirmationContainer,
   buildFinalRecapContainer,
   buildPaymentContainer,
-  buildBuyerPaymentActionsContainer,
   buildPaymentSetupErrorContainer,
   buildPaymentFailedContainer,
   buildFundsHeldContainer,
-  buildSellerActionsContainer,
-  buildBuyerFundsActionsContainer,
   buildReleasedContainer,
   buildPayoutConfirmedContainer,
   buildReviewRequestContainer,

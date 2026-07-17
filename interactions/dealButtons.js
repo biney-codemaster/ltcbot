@@ -6,6 +6,9 @@ const {
   LabelBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require("discord.js");
 const db = require("../database");
 const config = require("../config");
@@ -20,12 +23,12 @@ const {
   buildDisputeContainer,
   buildCloseTicketContainer,
   buildPublicReviewContainer,
-  buildBuyerPaymentActionsContainer,
 } = require("../utils/dealContainer");
 const {
   createLtcPayment,
   payoutToSeller,
   refundToBuyer,
+  findBuyerRefundAddress,
   isValidLtcAddress,
   getPaymentStatus,
 } = require("../utils/ltcWallet");
@@ -97,11 +100,6 @@ async function createAndSendPayment(channel, deal) {
   const updatedDeal = getDealByCode(deal.deal_code);
   const paymentMessage = await channel.send({
     components: [buildPaymentContainer(updatedDeal)],
-    flags: MessageFlags.IsComponentsV2,
-  });
-
-  await channel.send({
-    components: [buildBuyerPaymentActionsContainer(updatedDeal)],
     flags: MessageFlags.IsComponentsV2,
   });
 
@@ -648,23 +646,112 @@ async function handleStaffRefundButton(interaction, dealCode) {
     return deny(interaction, "Remboursement impossible à ce stade.");
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const detected = await findBuyerRefundAddress(deal);
+    const buyerWallet = detected.address;
+
+    db.prepare(
+      `UPDATE deals
+       SET buyer_wallet = @buyer_wallet,
+           mediator_id = @mediator_id,
+           updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({
+      buyer_wallet: buyerWallet,
+      mediator_id: interaction.user.id,
+      deal_code: dealCode,
+    });
+
+    const result = await refundToBuyer(getDealByCode(dealCode), buyerWallet);
+
+    db.prepare(
+      `UPDATE deals
+       SET status = 'refunded',
+           payout_id = @payout_id,
+           payout_status = @payout_status,
+           payout_error = NULL,
+           updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({
+      payout_id: result.payoutId,
+      payout_status: result.status || "processing",
+      deal_code: dealCode,
+    });
+
+    const updated = getDealByCode(dealCode);
+
+    await interaction.channel.send({
+      content:
+        `${e("success")}Remboursement acheteur diffusé pour #${dealCode}.\n` +
+        `${e("wallet")}**Adresse détectée** — \`${buyerWallet}\`\n` +
+        `${e("info")}**TXID** — \`${result.payoutId}\`\n` +
+        `${e("next")}[Explorer](https://litecoinspace.org/tx/${result.payoutId})`,
+    });
+
+    await interaction.channel.send({
+      components: [buildCloseTicketContainer(updated, interaction.user.id)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+
+    await logAdmin(interaction.client, `Remboursement #${dealCode}`, [
+      `${e("money")}Remboursé auto à l'acheteur par <@${interaction.user.id}>`,
+      `${e("wallet")}**Adresse (détectée)** — \`${buyerWallet}\``,
+      `${e("info")}**TXID** — \`${result.payoutId}\``,
+      `${e("buyer")}<@${updated.buyer_id}>`,
+    ]);
+
+    return interaction.editReply({
+      content: `${e("success")}Remboursement initié vers \`${buyerWallet}\`.`,
+    });
+  } catch (err) {
+    console.error("Remboursement auto:", err.message);
+    db.prepare(
+      `UPDATE deals SET payout_error = @err, updated_at = datetime('now') WHERE deal_code = @deal_code`
+    ).run({ err: err.message, deal_code: dealCode });
+
+    return interaction.editReply({
+      content:
+        `${e("warning")}Auto-detect impossible : \`${err.message}\`\n` +
+        `Tu peux saisir l'adresse LTC manuellement :`,
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`deal_staff_refund_manual:${dealCode}`)
+            .setLabel("Saisir l'adresse LTC")
+            .setStyle(ButtonStyle.Primary)
+        ),
+      ],
+    });
+  }
+}
+
+async function handleStaffRefundManualButton(interaction, dealCode) {
+  if (!isStaff(interaction.member)) {
+    return deny(interaction, "Réservé au staff.");
+  }
+
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+
   const modal = new ModalBuilder()
     .setCustomId(`deal_staff_refund_modal:${dealCode}`)
     .setTitle("Rembourser l'acheteur");
 
-  const walletLabel = new LabelBuilder()
-    .setLabel("Adresse LTC de l'acheteur")
-    .setTextInputComponent(
-      new TextInputBuilder()
-        .setCustomId("buyer_wallet")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMaxLength(100)
-        .setPlaceholder("ltc1... ou L...")
-        .setValue(deal.buyer_wallet || "")
-    );
+  const walletInput = new TextInputBuilder()
+    .setCustomId("buyer_wallet")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(100)
+    .setPlaceholder("ltc1... ou L...");
+  if (deal.buyer_wallet) walletInput.setValue(deal.buyer_wallet);
 
-  modal.addLabelComponents(walletLabel);
+  modal.addLabelComponents(
+    new LabelBuilder()
+      .setLabel("Adresse LTC de l'acheteur")
+      .setTextInputComponent(walletInput)
+  );
   await interaction.showModal(modal);
 }
 
@@ -911,6 +998,7 @@ module.exports = {
   handleStaffReleaseButton,
   handleStaffResolveButton,
   handleStaffRefundButton,
+  handleStaffRefundManualButton,
   handleStaffRefundModal,
   handleCloseButton,
   handleReviewButton,

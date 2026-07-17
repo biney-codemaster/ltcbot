@@ -1,6 +1,14 @@
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  MessageFlags,
+} = require("discord.js");
 const config = require("../config");
 const { formatLtcAmount } = require("./ltcPrice");
+
+const { e } = config;
 
 function formatWhen(isoOrSqlite) {
   if (!isoOrSqlite) return "—";
@@ -16,7 +24,7 @@ function cleanChannelId(id) {
   return /^\d{17,20}$/.test(cleaned) ? cleaned : null;
 }
 
-async function sendEmbed(client, channelId, embed) {
+async function sendContainer(client, channelId, container) {
   const id = cleanChannelId(channelId);
   if (!client) {
     console.warn("[logs] client manquant");
@@ -33,7 +41,10 @@ async function sendEmbed(client, channelId, embed) {
       console.warn(`[logs] salon ${id} introuvable ou non textuel`);
       return null;
     }
-    const msg = await channel.send({ embeds: [embed] });
+    const msg = await channel.send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
     console.log(`[logs] OK → #${channel.name || id}`);
     return msg;
   } catch (err) {
@@ -42,17 +53,29 @@ async function sendEmbed(client, channelId, embed) {
   }
 }
 
+function buildAdminLogContainer(title, lines) {
+  const container = new ContainerBuilder();
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`# ${e("staff")}${title}`)
+  );
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(lines.filter(Boolean).join("\n") || "—")
+  );
+  return container;
+}
+
 /**
  * Log admin (événements internes).
  */
 async function logAdmin(client, title, lines) {
-  const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(`🛡 ${title}`)
-    .setDescription(lines.filter(Boolean).join("\n").slice(0, 4000) || "—")
-    .setTimestamp();
-
-  return sendEmbed(client, config.adminLogsChannelId, embed);
+  return sendContainer(
+    client,
+    config.adminLogsChannelId,
+    buildAdminLogContainer(title, lines)
+  );
 }
 
 /**
@@ -66,24 +89,29 @@ async function logPublicCompleted(client, deal) {
       ? `${"★".repeat(deal.review_rating)}${"☆".repeat(5 - deal.review_rating)} (${deal.review_rating}/5)`
       : "—";
 
-  const parties = deal.review_anonymous
-    ? "Parties anonymisées"
-    : `Acheteur: <@${deal.buyer_id}>\nVendeur: <@${deal.seller_id}>`;
-
-  const embed = new EmbedBuilder()
-    .setColor(0x57f287)
-    .setTitle(`✅ Deal complété #${deal.deal_code}`)
-    .addFields(
-      { name: "Produit", value: String(deal.product || "—").slice(0, 1024), inline: true },
-      { name: "Prix", value: `${deal.price}${deal.currency}`, inline: true },
-      { name: "Crypto", value: `\`${amount} ${deal.crypto || "LTC"}\``, inline: true },
-      { name: "Date", value: when, inline: true },
-      { name: "Note", value: rating, inline: true },
-      { name: "Participants", value: parties, inline: false }
+  const container = new ContainerBuilder();
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`# ${e("success")}Deal complété`)
+  );
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("deal")}#${deal.deal_code}\n` +
+        `${e("product")}**Produit** — ${deal.product}\n` +
+        `${e("money")}**Prix** — ${deal.price}${deal.currency}\n` +
+        `${e("ltc")}**Crypto** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
+        `${e("clock")}**Date** — ${when}\n` +
+        `${e("confirm")}**Note** — ${rating}\n` +
+        (deal.review_anonymous
+          ? `${e("users")}**Parties** — anonymisées`
+          : `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
+            `${e("seller")}**Vendeur** — <@${deal.seller_id}>`)
     )
-    .setTimestamp();
+  );
 
-  return sendEmbed(client, config.publicLogsChannelId, embed);
+  return sendContainer(client, config.publicLogsChannelId, container);
 }
 
 /** Ping des salons logs au démarrage (diagnostic). */
@@ -108,7 +136,7 @@ async function probeLogChannels(client) {
     }
   }
 
-  if (config.adminLogsChannelId) {
+  if (cleanChannelId(config.adminLogsChannelId)) {
     await logAdmin(client, "Bot démarré", [
       `Bot connecté — logs admin opérationnels.`,
       `Public logs: ${cleanChannelId(config.publicLogsChannelId) ? "OK" : "non configuré"}`,
@@ -123,4 +151,5 @@ module.exports = {
   formatWhen,
   probeLogChannels,
   cleanChannelId,
+  buildAdminLogContainer,
 };

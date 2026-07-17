@@ -380,6 +380,70 @@ async function getPayoutStatus(payoutId) {
 }
 
 /**
+ * Retrouve l'adresse LTC qui a financé l'escrow (pour remboursement acheteur).
+ * Lit les txs entrantes sur pay_address et prend l'émetteur principal.
+ */
+async function findBuyerRefundAddress(deal) {
+  const escrow =
+    deal.pay_address ||
+    (deal.wallet_index != null || deal.payment_id
+      ? addressFromIndex(
+          deal.wallet_index != null
+            ? Number(deal.wallet_index)
+            : parsePaymentId(deal.payment_id)
+        ).address
+      : null);
+
+  if (!escrow) {
+    throw new Error("Adresse escrow du deal introuvable");
+  }
+
+  const txs = await explorerGet(`/address/${encodeURIComponent(escrow)}/txs`);
+  if (!Array.isArray(txs) || txs.length === 0) {
+    throw new Error("Aucune transaction trouvée sur l'adresse escrow");
+  }
+
+  /** @type {Map<string, number>} */
+  const scores = new Map();
+
+  for (const tx of txs) {
+    const outputsToUs = (tx.vout || []).filter(
+      (o) => o.scriptpubkey_address === escrow && Number(o.value) > 0
+    );
+    if (outputsToUs.length === 0) continue;
+
+    const paid = outputsToUs.reduce((s, o) => s + Number(o.value || 0), 0);
+
+    for (const vin of tx.vin || []) {
+      const from = vin.prevout?.scriptpubkey_address;
+      if (!from || from === escrow) continue;
+      scores.set(from, (scores.get(from) || 0) + paid);
+    }
+  }
+
+  if (scores.size === 0) {
+    throw new Error(
+      "Impossible de déterminer l'adresse de l'acheteur (txs sans expéditeur lisible)"
+    );
+  }
+
+  let best = null;
+  let bestScore = -1;
+  for (const [addr, score] of scores) {
+    if (score > bestScore) {
+      best = addr;
+      bestScore = score;
+    }
+  }
+
+  if (!best || !isValidLtcAddress(best)) {
+    throw new Error("Adresse acheteur détectée invalide");
+  }
+
+  return { address: best, escrow, scoreLitoshis: bestScore };
+}
+
+/**
  * Sweep les UTXO du deal vers une adresse LTC (vendeur ou remboursement acheteur).
  */
 async function sweepDealToAddress(deal, toAddress) {
@@ -514,6 +578,7 @@ module.exports = {
   getPayoutStatus,
   payoutToSeller,
   refundToBuyer,
+  findBuyerRefundAddress,
   sweepDealToAddress,
   resolvePayoutAmount,
   statusLabel,

@@ -31,6 +31,7 @@ const {
   handleStaffReleaseButton,
   handleStaffResolveButton,
   handleStaffRefundButton,
+  handleStaffRefundManualButton,
   handleStaffRefundModal,
   handleCloseButton,
   handleReviewButton,
@@ -230,6 +231,11 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isButton() && interaction.customId.startsWith("deal_staff_refund:")) {
       const [, dealCode] = interaction.customId.split(":");
       await handleStaffRefundButton(interaction, dealCode);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("deal_staff_refund_manual:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleStaffRefundManualButton(interaction, dealCode);
     }
 
     if (interaction.isButton() && interaction.customId.startsWith("deal_close:")) {

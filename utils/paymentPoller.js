@@ -15,8 +15,6 @@ const {
   buildPaymentFailedContainer,
   buildPayoutConfirmedContainer,
   buildReviewRequestContainer,
-  buildSellerActionsContainer,
-  buildBuyerFundsActionsContainer,
 } = require("./dealContainer");
 const { MessageFlags } = require("discord.js");
 const { e } = require("../config");
@@ -256,28 +254,9 @@ async function publishFundsHeld(deal) {
       flags: MessageFlags.IsComponentsV2,
     });
 
-    const sellerMsg = await channel.send({
-      components: [buildSellerActionsContainer(deal)],
-      flags: MessageFlags.IsComponentsV2,
-    });
-
-    const buyerMsg = await channel.send({
-      components: [buildBuyerFundsActionsContainer(deal)],
-      flags: MessageFlags.IsComponentsV2,
-    });
-
     db.prepare(
-      `UPDATE deals
-       SET funds_held_message_id = @funds_id,
-           seller_actions_message_id = @seller_id,
-           buyer_actions_message_id = @buyer_id
-       WHERE deal_code = @deal_code`
-    ).run({
-      funds_id: fundsMsg.id,
-      seller_id: sellerMsg.id,
-      buyer_id: buyerMsg.id,
-      deal_code: deal.deal_code,
-    });
+      `UPDATE deals SET funds_held_message_id = @id WHERE deal_code = @deal_code`
+    ).run({ id: fundsMsg.id, deal_code: deal.deal_code });
   } catch (err) {
     console.error(`Impossible de publier funds_held pour #${deal.deal_code}:`, err.message);
   }
@@ -302,50 +281,17 @@ async function updatePaymentMessage(deal, container) {
 }
 
 async function updateFundsHeldMessage(deal) {
-  if (!client || !deal.channel_id) return false;
+  if (!client || !deal.channel_id || !deal.funds_held_message_id) return false;
 
   try {
     const channel = await client.channels.fetch(deal.channel_id);
     if (!channel?.isTextBased()) return false;
-
-    let ok = false;
-    if (deal.funds_held_message_id) {
-      try {
-        const msg = await channel.messages.fetch(deal.funds_held_message_id);
-        await msg.edit({
-          components: [buildFundsHeldContainer(deal)],
-          flags: MessageFlags.IsComponentsV2,
-        });
-        ok = true;
-      } catch {
-        // ignore
-      }
-    }
-    if (deal.seller_actions_message_id) {
-      try {
-        const msg = await channel.messages.fetch(deal.seller_actions_message_id);
-        await msg.edit({
-          components: [buildSellerActionsContainer(deal)],
-          flags: MessageFlags.IsComponentsV2,
-        });
-        ok = true;
-      } catch {
-        // ignore
-      }
-    }
-    if (deal.buyer_actions_message_id) {
-      try {
-        const msg = await channel.messages.fetch(deal.buyer_actions_message_id);
-        await msg.edit({
-          components: [buildBuyerFundsActionsContainer(deal)],
-          flags: MessageFlags.IsComponentsV2,
-        });
-        ok = true;
-      } catch {
-        // ignore
-      }
-    }
-    return ok;
+    const msg = await channel.messages.fetch(deal.funds_held_message_id);
+    await msg.edit({
+      components: [buildFundsHeldContainer(deal)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+    return true;
   } catch {
     return false;
   }
