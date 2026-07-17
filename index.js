@@ -30,6 +30,8 @@ const {
   handleDisputeModal,
   handleStaffReleaseButton,
   handleStaffResolveButton,
+  handleStaffRefundButton,
+  handleStaffRefundModal,
   handleCloseButton,
   handleReviewButton,
   handleReviewModal,
@@ -38,6 +40,7 @@ require("./database"); // initialise la DB au démarrage
 const { startPaymentPoller } = require("./utils/paymentPoller");
 const { logEnvValidation } = require("./utils/envCheck");
 const { pingWallet, loadOrCreateMnemonic } = require("./utils/ltcWallet");
+const { probeLogChannels } = require("./utils/dealLogger");
 
 if (!logEnvValidation()) {
   process.exit(1);
@@ -153,6 +156,7 @@ client.once(Events.ClientReady, async () => {
   } catch (err) {
     console.error("Wallet LTC KO au démarrage:", err.message);
   }
+  await probeLogChannels(client);
   startPaymentPoller(client);
   console.log("Polling wallet LTC démarré (30s).");
 });
@@ -223,6 +227,11 @@ client.on("interactionCreate", async (interaction) => {
       await handleStaffResolveButton(interaction, dealCode);
     }
 
+    if (interaction.isButton() && interaction.customId.startsWith("deal_staff_refund:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleStaffRefundButton(interaction, dealCode);
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith("deal_close:")) {
       const [, dealCode] = interaction.customId.split(":");
       await handleCloseButton(interaction, dealCode);
@@ -247,6 +256,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith("deal_review_modal:")) {
       await handleReviewModal(interaction);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("deal_staff_refund_modal:")) {
+      await handleStaffRefundModal(interaction);
     }
   } catch (err) {
     console.error("Erreur interaction:", err);

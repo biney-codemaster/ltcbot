@@ -13,15 +13,26 @@ const { e } = config;
 async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
   const dealCode = deal.deal_code;
 
-  // Publier l'avis
+  // Publier l'avis (container V2, fallback embed)
   if (config.reviewsChannelId && reviewContainer) {
     try {
       const reviewsCh = await client.channels.fetch(config.reviewsChannelId);
       if (reviewsCh?.isTextBased()) {
-        await reviewsCh.send({
-          components: [reviewContainer],
-          flags: MessageFlags.IsComponentsV2,
-        });
+        try {
+          await reviewsCh.send({
+            components: [reviewContainer],
+            flags: MessageFlags.IsComponentsV2,
+          });
+        } catch (err) {
+          console.warn("Avis V2 KO, fallback texte:", err.message);
+          await reviewsCh.send({
+            content:
+              `**Avis deal #${deal.deal_code}** — ${deal.review_rating}/5\n` +
+              `${deal.review_anonymous ? "Anonyme" : `<@${deal.buyer_id}>`} → <@${deal.seller_id}>\n` +
+              `${deal.product} · ${deal.price}${deal.currency}\n\n` +
+              `${deal.review_text}`,
+          });
+        }
       }
     } catch (err) {
       console.warn("Publication avis:", err.message);

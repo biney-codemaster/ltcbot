@@ -147,6 +147,21 @@ try {
 } catch {
   // colonne déjà présente
 }
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN buyer_actions_message_id TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN seller_actions_message_id TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN buyer_wallet TEXT`);
+} catch {
+  // colonne déjà présente
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS wallet_meta (

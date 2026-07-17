@@ -20,10 +20,12 @@ const {
   buildDisputeContainer,
   buildCloseTicketContainer,
   buildPublicReviewContainer,
+  buildBuyerPaymentActionsContainer,
 } = require("../utils/dealContainer");
 const {
   createLtcPayment,
   payoutToSeller,
+  refundToBuyer,
   isValidLtcAddress,
   getPaymentStatus,
 } = require("../utils/ltcWallet");
@@ -95,6 +97,11 @@ async function createAndSendPayment(channel, deal) {
   const updatedDeal = getDealByCode(deal.deal_code);
   const paymentMessage = await channel.send({
     components: [buildPaymentContainer(updatedDeal)],
+    flags: MessageFlags.IsComponentsV2,
+  });
+
+  await channel.send({
+    components: [buildBuyerPaymentActionsContainer(updatedDeal)],
     flags: MessageFlags.IsComponentsV2,
   });
 
@@ -611,16 +618,139 @@ async function handleStaffResolveButton(interaction, dealCode) {
      WHERE deal_code = @deal_code`
   ).run({ mediator_id: interaction.user.id, deal_code: dealCode });
 
-  await interaction.update({ components: [] });
-  await interaction.channel.send({
-    content:
-      `${e("staff")}Litige #${dealCode} clôturé par <@${interaction.user.id}>.\n` +
-      `${e("warning")}Aucun payout auto n'a été déclenché — vérifiez la seed wallet et l'adresse escrow du deal.`,
-  });
-  await interaction.channel.send({
-    components: [buildCloseTicketContainer(getDealByCode(dealCode), interaction.user.id)],
+  const updated = getDealByCode(dealCode);
+
+  await interaction.update({
+    components: [buildCloseTicketContainer(updated, interaction.user.id)],
     flags: MessageFlags.IsComponentsV2,
   });
+
+  await interaction.channel.send({
+    content:
+      `${e("staff")}Litige #${dealCode} clôturé par <@${interaction.user.id}> **sans payout auto**.\n` +
+      `${e("warning")}Si des fonds restent sur l'adresse escrow, gérez-les manuellement avec la seed.`,
+  });
+
+  await logAdmin(interaction.client, `Litige clôturé #${dealCode}`, [
+    `${e("staff")}Clôturé sans payout par <@${interaction.user.id}>`,
+    `${e("product")}**Produit** — ${updated.product}`,
+  ]);
+}
+
+async function handleStaffRefundButton(interaction, dealCode) {
+  if (!isStaff(interaction.member)) {
+    return deny(interaction, "Réservé au staff.");
+  }
+
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!["disputed", "funds_held"].includes(deal.status)) {
+    return deny(interaction, "Remboursement impossible à ce stade.");
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId(`deal_staff_refund_modal:${dealCode}`)
+    .setTitle("Rembourser l'acheteur");
+
+  const walletLabel = new LabelBuilder()
+    .setLabel("Adresse LTC de l'acheteur")
+    .setTextInputComponent(
+      new TextInputBuilder()
+        .setCustomId("buyer_wallet")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(100)
+        .setPlaceholder("ltc1... ou L...")
+        .setValue(deal.buyer_wallet || "")
+    );
+
+  modal.addLabelComponents(walletLabel);
+  await interaction.showModal(modal);
+}
+
+async function handleStaffRefundModal(interaction) {
+  if (!isStaff(interaction.member)) {
+    return deny(interaction, "Réservé au staff.");
+  }
+
+  const dealCode = interaction.customId.split(":")[1];
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!["disputed", "funds_held"].includes(deal.status)) {
+    return deny(interaction, "Remboursement impossible à ce stade.");
+  }
+
+  const buyerWallet = interaction.fields.getTextInputValue("buyer_wallet").trim();
+  if (!isValidLtcAddress(buyerWallet)) {
+    return deny(interaction, "Adresse LTC invalide.");
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  db.prepare(
+    `UPDATE deals
+     SET buyer_wallet = @buyer_wallet,
+         mediator_id = @mediator_id,
+         updated_at = datetime('now')
+     WHERE deal_code = @deal_code`
+  ).run({
+    buyer_wallet: buyerWallet,
+    mediator_id: interaction.user.id,
+    deal_code: dealCode,
+  });
+
+  try {
+    const result = await refundToBuyer(getDealByCode(dealCode), buyerWallet);
+
+    db.prepare(
+      `UPDATE deals
+       SET status = 'refunded',
+           payout_id = @payout_id,
+           payout_status = @payout_status,
+           payout_error = NULL,
+           updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({
+      payout_id: result.payoutId,
+      payout_status: result.status || "processing",
+      deal_code: dealCode,
+    });
+
+    const updated = getDealByCode(dealCode);
+
+    await interaction.channel.send({
+      content:
+        `${e("success")}Remboursement acheteur diffusé pour #${dealCode}.\n` +
+        `${e("wallet")}**Vers** — \`${buyerWallet}\`\n` +
+        `${e("info")}**TXID** — \`${result.payoutId}\`\n` +
+        `${e("next")}[Explorer](https://litecoinspace.org/tx/${result.payoutId})`,
+    });
+
+    await interaction.channel.send({
+      components: [buildCloseTicketContainer(updated, interaction.user.id)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+
+    await logAdmin(interaction.client, `Remboursement #${dealCode}`, [
+      `${e("money")}Remboursé à l'acheteur par <@${interaction.user.id}>`,
+      `${e("wallet")}**Adresse** — \`${buyerWallet}\``,
+      `${e("info")}**TXID** — \`${result.payoutId}\``,
+      `${e("buyer")}<@${updated.buyer_id}>`,
+    ]);
+
+    return interaction.editReply({
+      content: `${e("success")}Remboursement initié.`,
+    });
+  } catch (err) {
+    console.error("Remboursement:", err.message);
+    db.prepare(
+      `UPDATE deals SET payout_error = @err, updated_at = datetime('now') WHERE deal_code = @deal_code`
+    ).run({ err: err.message, deal_code: dealCode });
+
+    return interaction.editReply({
+      content: `${e("error")}Remboursement échoué : \`${err.message}\``,
+    });
+  }
 }
 
 async function handleReviewButton(interaction, dealCode) {
@@ -780,6 +910,8 @@ module.exports = {
   handleDisputeModal,
   handleStaffReleaseButton,
   handleStaffResolveButton,
+  handleStaffRefundButton,
+  handleStaffRefundModal,
   handleCloseButton,
   handleReviewButton,
   handleReviewModal,

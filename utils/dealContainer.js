@@ -190,10 +190,22 @@ function buildPaymentContainer(deal) {
         `${e("money")}**Prix deal** — ${deal.price}${deal.currency}\n` +
         `${e("wallet")}**Adresse** — \`${address}\`\n` +
         `${e("clock")}**Statut** — ${status}\n\n` +
-        `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse. Tout autre envoi peut être perdu.`
+        `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse.`
     )
   );
 
+  return container;
+}
+
+/** Boutons réservés à l'acheteur (paiement). */
+function buildBuyerPaymentActionsContainer(deal) {
+  const container = new ContainerBuilder();
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("buyer")}Actions acheteur\n` +
+        `Uniquement pour <@${deal.buyer_id}>.`
+    )
+  );
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       applyEmoji(
@@ -255,7 +267,7 @@ function buildPaymentFailedContainer(deal, reason) {
     new TextDisplayBuilder().setContent(
       `## ${e("error")}Paiement non finalisé\n` +
         `Statut : **${reason}**\n\n` +
-        `${e("next")}Vous pouvez générer une nouvelle adresse, ou contacter le staff si des fonds ont déjà été envoyés.`
+        `${e("buyer")}Actions réservées à <@${deal.buyer_id}>.`
     )
   );
 
@@ -284,7 +296,7 @@ function buildPaymentFailedContainer(deal, reason) {
 
 function buildFundsHeldContainer(deal) {
   const container = new ContainerBuilder();
-  addStandardHeader(container, deal);
+  addStandardHeader(container, deal, { preferRoles: true });
 
   const walletLine = deal.seller_wallet
     ? `${e("wallet")}**Adresse vendeur** — \`${deal.seller_wallet}\``
@@ -297,42 +309,74 @@ function buildFundsHeldContainer(deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("shield")}Fonds sécurisés\n` +
-        `${e("success")}Le paiement a été reçu et est conservé sur une **adresse escrow dédiée** (wallet local).\n\n` +
-        `${e("seller")}<@${deal.seller_id}> — livrez le produit à l'acheteur.\n` +
+        `${e("success")}Le paiement est conservé sur une **adresse escrow dédiée**.\n\n` +
+        `${e("seller")}<@${deal.seller_id}> — livrez le produit.\n` +
         `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
         `${walletLine}${payoutErrorLine}`
     )
   );
 
-  const walletButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
-      .setLabel(deal.seller_wallet ? "Modifier mon adresse" : "Adresse de retrait")
-      .setStyle(ButtonStyle.Secondary),
-    "wallet"
-  );
+  return container;
+}
 
-  const releaseButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_release:${deal.deal_code}`)
-      .setLabel(deal.payout_error ? "Réessayer la libération" : "Produit reçu — libérer")
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(!deal.seller_wallet),
-    "release"
+/** Boutons réservés au vendeur. */
+function buildSellerActionsContainer(deal) {
+  const container = new ContainerBuilder();
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("seller")}Actions vendeur\n` +
+        `Uniquement pour <@${deal.seller_id}>.`
+    )
   );
-
-  const disputeButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_dispute:${deal.deal_code}`)
-      .setLabel("Ouvrir un litige")
-      .setStyle(ButtonStyle.Danger),
-    "dispute"
-  );
-
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(walletButton, releaseButton, disputeButton)
+    new ActionRowBuilder().addComponents(
+      applyEmoji(
+        new ButtonBuilder()
+          .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
+          .setLabel(deal.seller_wallet ? "Modifier mon adresse" : "Adresse de retrait")
+          .setStyle(ButtonStyle.Secondary),
+        "wallet"
+      ),
+      applyEmoji(
+        new ButtonBuilder()
+          .setCustomId(`deal_dispute:${deal.deal_code}`)
+          .setLabel("Ouvrir un litige")
+          .setStyle(ButtonStyle.Danger),
+        "dispute"
+      )
+    )
   );
+  return container;
+}
 
+/** Boutons réservés à l'acheteur (après fonds sécurisés). */
+function buildBuyerFundsActionsContainer(deal) {
+  const container = new ContainerBuilder();
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("buyer")}Actions acheteur\n` +
+        `Uniquement pour <@${deal.buyer_id}>.`
+    )
+  );
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      applyEmoji(
+        new ButtonBuilder()
+          .setCustomId(`deal_release:${deal.deal_code}`)
+          .setLabel(deal.payout_error ? "Réessayer la libération" : "Produit reçu — libérer")
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(!deal.seller_wallet),
+        "release"
+      ),
+      applyEmoji(
+        new ButtonBuilder()
+          .setCustomId(`deal_dispute:${deal.deal_code}`)
+          .setLabel("Ouvrir un litige")
+          .setStyle(ButtonStyle.Danger),
+        "dispute"
+      )
+    )
+  );
   return container;
 }
 
@@ -483,37 +527,40 @@ function buildDisputeContainer(deal, openedBy) {
       `## ${e("dispute")}Litige ouvert\n` +
         `Ouvert par <@${openedBy}>.\n\n` +
         `**Motif**\n${deal.dispute_reason || "*non précisé*"}\n\n` +
-        `${e("staff")}Un médiateur doit trancher : libérer au vendeur, ou clôturer sans payout auto.`
+        `${e("staff")}Médiation staff :\n` +
+        `• **Libérer vendeur** — payout vers l'adresse vendeur\n` +
+        `• **Rembourser acheteur** — renvoi des LTC vers l'acheteur\n` +
+        `• **Clôturer** — ferme le litige sans transfert auto`
     )
   );
 
   const releaseButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_staff_release:${deal.deal_code}`)
-      .setLabel("Staff: libérer vendeur")
+      .setLabel("Libérer vendeur")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!deal.seller_wallet),
     "release"
   );
 
+  const refundButton = applyEmoji(
+    new ButtonBuilder()
+      .setCustomId(`deal_staff_refund:${deal.deal_code}`)
+      .setLabel("Rembourser acheteur")
+      .setStyle(ButtonStyle.Primary),
+    "money"
+  );
+
   const resolveButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_staff_resolve:${deal.deal_code}`)
-      .setLabel("Staff: clôturer litige")
+      .setLabel("Clôturer sans payout")
       .setStyle(ButtonStyle.Secondary),
     "staff"
   );
 
-  const closeButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_close:${deal.deal_code}`)
-      .setLabel("Fermer le salon")
-      .setStyle(ButtonStyle.Danger),
-    "close"
-  );
-
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(releaseButton, resolveButton, closeButton)
+    new ActionRowBuilder().addComponents(releaseButton, refundButton, resolveButton)
   );
   return container;
 }
@@ -552,9 +599,12 @@ module.exports = {
   buildConfirmationContainer,
   buildFinalRecapContainer,
   buildPaymentContainer,
+  buildBuyerPaymentActionsContainer,
   buildPaymentSetupErrorContainer,
   buildPaymentFailedContainer,
   buildFundsHeldContainer,
+  buildSellerActionsContainer,
+  buildBuyerFundsActionsContainer,
   buildReleasedContainer,
   buildPayoutConfirmedContainer,
   buildReviewRequestContainer,

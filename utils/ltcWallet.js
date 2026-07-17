@@ -380,15 +380,11 @@ async function getPayoutStatus(payoutId) {
 }
 
 /**
- * Envoie les LTC de l'adresse du deal vers le vendeur (sweep minus fees).
- * Après payout, l'adresse n'est plus réutilisée.
+ * Sweep les UTXO du deal vers une adresse LTC (vendeur ou remboursement acheteur).
  */
-async function payoutToSeller(deal, paymentDetails) {
-  if (!deal.seller_wallet) {
-    throw new Error("Adresse LTC du vendeur manquante");
-  }
-  if (!isValidLtcAddress(deal.seller_wallet)) {
-    throw new Error("Adresse LTC du vendeur invalide");
+async function sweepDealToAddress(deal, toAddress) {
+  if (!toAddress || !isValidLtcAddress(toAddress)) {
+    throw new Error("Adresse LTC de destination invalide");
   }
 
   const index =
@@ -396,17 +392,14 @@ async function payoutToSeller(deal, paymentDetails) {
       ? Number(deal.wallet_index)
       : parsePaymentId(deal.payment_id);
   if (index == null || !Number.isInteger(index)) {
-    throw new Error("Index wallet du deal introuvable — impossible de signer le payout");
+    throw new Error("Index wallet du deal introuvable — impossible de signer");
   }
 
   const { address, payment, child } = addressFromIndex(index);
   const utxos = await getAddressUtxos(address);
 
-  // Préférer les UTXO confirmés ; sinon mempool (dernier recours)
   let spendable = utxos.filter((u) => u.status?.confirmed === true);
-  if (spendable.length === 0) {
-    spendable = utxos;
-  }
+  if (spendable.length === 0) spendable = utxos;
   if (spendable.length === 0) {
     throw new Error(`Aucun UTXO sur l'adresse escrow ${address}`);
   }
@@ -418,14 +411,13 @@ async function payoutToSeller(deal, paymentDetails) {
   const keyPair = ECPair.fromPrivateKey(Buffer.from(child.privateKey), {
     network: LITECOIN,
   });
-  const toAddress = deal.seller_wallet.trim();
+  const dest = toAddress.trim();
 
-  // 1er build → mesurer la vsize réelle et remonter les frais si besoin
   let { tx, sendValue } = buildSweepTransaction(
     spendable,
     payment,
     keyPair,
-    toAddress,
+    dest,
     fee,
     total
   );
@@ -436,7 +428,7 @@ async function payoutToSeller(deal, paymentDetails) {
       spendable,
       payment,
       keyPair,
-      toAddress,
+      dest,
       fee,
       total
     ));
@@ -448,13 +440,12 @@ async function payoutToSeller(deal, paymentDetails) {
   } catch (err) {
     const required = parseMinRelayRequired(err.message);
     if (required == null) throw err;
-    // Retry unique avec le minimum relay + marge
     fee = required + 20n;
     ({ tx, sendValue } = buildSweepTransaction(
       spendable,
       payment,
       keyPair,
-      toAddress,
+      dest,
       fee,
       total
     ));
@@ -467,12 +458,27 @@ async function payoutToSeller(deal, paymentDetails) {
     raw: {
       txid,
       from: address,
-      to: toAddress,
+      to: dest,
       amount_ltc: litoshisToLtc(sendValue),
       fee_ltc: litoshisToLtc(fee),
       unused_address: true,
     },
   };
+}
+
+/**
+ * Envoie les LTC de l'adresse du deal vers le vendeur (sweep minus fees).
+ */
+async function payoutToSeller(deal, paymentDetails) {
+  if (!deal.seller_wallet) {
+    throw new Error("Adresse LTC du vendeur manquante");
+  }
+  return sweepDealToAddress(deal, deal.seller_wallet.trim());
+}
+
+/** Rembourse l'acheteur (litige) vers son adresse LTC. */
+async function refundToBuyer(deal, buyerAddress) {
+  return sweepDealToAddress(deal, buyerAddress);
 }
 
 async function pingWallet() {
@@ -507,6 +513,8 @@ module.exports = {
   getPaymentStatus,
   getPayoutStatus,
   payoutToSeller,
+  refundToBuyer,
+  sweepDealToAddress,
   resolvePayoutAmount,
   statusLabel,
   isPaidStatus,
