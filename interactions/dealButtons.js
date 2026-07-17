@@ -42,7 +42,7 @@ function isStaff(member) {
 }
 
 function deny(interaction, message) {
-  return interaction.reply({ content: `${e("error")}${message}`, ephemeral: true });
+  return interaction.reply({ content: `${e("error")}${message}`, flags: MessageFlags.Ephemeral });
 }
 
 async function createAndSendPayment(channel, deal) {
@@ -247,7 +247,7 @@ async function handleCheckPaymentButton(interaction, dealCode) {
     return deny(interaction, "Aucun paiement n'a encore été généré.");
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
     const updated = await refreshDealPayment(deal);
@@ -339,7 +339,7 @@ async function handleReleaseButton(interaction, dealCode) {
     );
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
     const result = await runSellerPayout(deal);
@@ -461,7 +461,7 @@ async function handleSellerWalletModal(interaction) {
 
   await interaction.reply({
     content: `${e("success")}Adresse de retrait enregistrée : \`${wallet}\``,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 
   const updated = await updateFundsHeldMessage(updatedDeal);

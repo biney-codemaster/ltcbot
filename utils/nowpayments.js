@@ -115,9 +115,59 @@ function generateTotpCode() {
 /**
  * Crée un paiement LTC via NOWPayments pour un deal.
  */
+async function getMinPaymentAmount({ currencyFrom, currencyTo, fiatEquivalent, isFixedRate = true }) {
+  const params = new URLSearchParams({
+    currency_from: currencyFrom,
+    currency_to: currencyTo,
+    is_fixed_rate: String(!!isFixedRate),
+  });
+  if (fiatEquivalent) params.set("fiat_equivalent", fiatEquivalent);
+
+  return nowpaymentsRequest("GET", `/min-amount?${params.toString()}`);
+}
+
+async function assertAboveMinAmount(deal) {
+  const priceCurrency = fiatCurrencyCode(deal.currency);
+  const payCurrency = String(deal.crypto || "LTC").toLowerCase();
+  const price = Number(deal.price);
+
+  const minInfo = await getMinPaymentAmount({
+    currencyFrom: priceCurrency,
+    currencyTo: payCurrency,
+    fiatEquivalent: priceCurrency,
+    isFixedRate: true,
+  });
+
+  const minCrypto = Number(minInfo.min_amount);
+  const minFiat = Number(minInfo.fiat_equivalent);
+
+  // Estime le crypto via le prix deal / ou compare en fiat si dispo
+  if (Number.isFinite(minFiat) && minFiat > 0 && price < minFiat) {
+    const err = new Error(
+      `Montant trop petit pour NOWPayments. Minimum ≈ ${minFiat.toFixed(2)}${deal.currency} (deal: ${price}${deal.currency}). Augmente le prix du deal.`
+    );
+    err.code = "BELOW_MINIMUM";
+    err.minFiat = minFiat;
+    err.minCrypto = minCrypto;
+    throw err;
+  }
+
+  // Fallback: si pas de fiat_equivalent, on laisse l'API payment décider,
+  // mais on améliore le message d'erreur côté create.
+  return minInfo;
+}
+
 async function createLtcPayment(deal) {
   const priceCurrency = fiatCurrencyCode(deal.currency);
   const payCurrency = String(deal.crypto || "LTC").toLowerCase();
+
+  try {
+    await assertAboveMinAmount(deal);
+  } catch (err) {
+    if (err.code === "BELOW_MINIMUM") throw err;
+    // Si /min-amount échoue, on tente quand même le payment (message amélioré après)
+    console.warn("Vérification min-amount impossible:", err.message);
+  }
 
   const payload = {
     price_amount: Number(deal.price),
@@ -132,7 +182,20 @@ async function createLtcPayment(deal) {
     payload.ipn_callback_url = config.nowpaymentsIpnUrl;
   }
 
-  return nowpaymentsRequest("POST", "/payment", payload);
+  try {
+    return await nowpaymentsRequest("POST", "/payment", payload);
+  } catch (err) {
+    const raw = String(err.message || "");
+    if (/amountTo is too small|too small|minimum/i.test(raw)) {
+      const nicer = new Error(
+        `Montant trop petit pour un paiement ${payCurrency.toUpperCase()} sur NOWPayments. ` +
+          `Augmente le prix du deal (essaie au moins quelques euros/dollars). Détail: ${raw}`
+      );
+      nicer.code = "BELOW_MINIMUM";
+      throw nicer;
+    }
+    throw err;
+  }
 }
 
 async function getPaymentStatus(paymentId) {
@@ -241,6 +304,8 @@ function isFailedStatus(status) {
 
 module.exports = {
   createLtcPayment,
+  getMinPaymentAmount,
+  assertAboveMinAmount,
   getPaymentStatus,
   getPayoutStatus,
   payoutToSeller,
