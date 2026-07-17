@@ -7,20 +7,19 @@ l'acheteur paie → fonds sur ton Self-Custodial Wallet → libération vers le 
 
 - Inscription **instantanée** (pas d'approbation OxaPay)
 - **Pas de vérification de domaine** (contrairement à Plisio)
-- Une seule clé : `BLOCKBEE_API_KEY` (API Key **V2**)
 - Minimum LTC ≈ **0.002 LTC** (~0.08–0.20€ selon le cours) — mieux que NOWPayments (~2$)
 
 ## Prérequis
 
 1. Bot Discord + intents Guilds
-2. Compte [BlockBee](https://dash.blockbee.io/) + **API Key V2** (+ Recovery Key sauvegardée)
+2. Compte [BlockBee](https://dash.blockbee.io/) + **API Key V2** avec **Address Override**
 3. Node.js 18+
 
 ## Installation
 
 ```bash
 cp .env.example .env
-# remplir BLOCKBEE_API_KEY=...
+# remplir BLOCKBEE_API_KEY et BLOCKBEE_LTC_ADDRESS
 npm install
 npm start
 ```
@@ -33,21 +32,28 @@ npm start
 | `CLIENT_ID` | oui | Application ID |
 | `GUILD_ID` | reco | Serveur de test |
 | `STAFF_ROLE_ID` | reco | Rôle staff |
-| `BLOCKBEE_API_KEY` | oui | API Key **V2** BlockBee |
+| `BLOCKBEE_API_KEY` | oui | API Key **V2** avec permission **Address Override** |
+| `BLOCKBEE_LTC_ADDRESS` | reco | Adresse SCW Litecoin (auto-fetch si vide) |
 
 ## Setup BlockBee (5 min)
 
 1. Créer un compte sur [dash.blockbee.io](https://dash.blockbee.io/)
-2. **API Keys** → générer **API Key V2** (sauvegarde aussi la Recovery Key !)
-3. **Wallet** → activer le Self-Custodial Wallet LTC
-4. Sur la page Wallet : **Set Self-Custodial Wallet** comme destination des paiements reçus
-5. Coller la clé V2 dans `BLOCKBEE_API_KEY`
-6. `npm start`
+2. **Self-Custodial Wallet → Litecoin** → copier ton adresse LTC (ex. `MU9KD2uF...`)
+3. **Developers → API Keys** → générer **API Key V2** :
+   - Cocher **Address Override** (obligatoire)
+   - Sauvegarder la Recovery Key
+4. Dans le `.env` :
+   ```
+   BLOCKBEE_API_KEY=ta_cle_v2
+   BLOCKBEE_LTC_ADDRESS=ton_adresse_scw_ltc
+   ```
+5. `npm start`
 
 ## Important
 
-- Deals **sous ~0.002 LTC** (souvent ~0.05€) = fonds perdus côté réseau. Mets au moins ~0.20€.
-- Sans Self-Custodial Wallet comme destination, le payout vendeur ne marchera pas.
+- Deals **sous ~0.002 LTC** (souvent ~0.10€) peuvent échouer. Mets au moins **~0.20€**.
+- Sans **Address Override** + adresse SCW, la génération d'adresse de paiement échoue.
+- Le payout vendeur utilise le même SCW BlockBee.
 
 ## Flow
 

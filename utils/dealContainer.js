@@ -214,14 +214,24 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
     /Bloqué par l'API BlockBee|montant trop|too small|minimum|BELOW_MINIMUM/i.test(
       String(errorMessage || "")
     );
+  const isAddress =
+    /address not set|override permission|BLOCKBEE_LTC_ADDRESS|Adresse LTC de destination/i.test(
+      String(errorMessage || "")
+    );
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("error")}Adresse de paiement indisponible\n` +
         `Erreur : \`${errorMessage || "inconnue"}\`\n\n` +
         (isMin
-          ? `${e("info")}Montant sous le minimum BlockBee (~0.002 LTC). Augmente légèrement le prix du deal.`
-          : `${e("next")}Réessayez une fois la config BlockBee corrigée (BLOCKBEE_API_KEY V2 + SCW).`)
+          ? `${e("info")}Montant sous le minimum BlockBee (~0.002 LTC). Augmente le prix à au moins ~0.20€.`
+          : isAddress
+            ? `${e("next")}**Fix rapide :**\n` +
+              `1. dash.blockbee.io → **Self-Custodial Wallet → Litecoin** → copie l'adresse\n` +
+              `2. Mets-la dans \`BLOCKBEE_LTC_ADDRESS\` du .env\n` +
+              `3. Regénère l'API Key V2 avec **Address Override** coché\n` +
+              `4. Relance le bot puis clique **Régénérer l'adresse**`
+            : `${e("next")}Vérifie \`BLOCKBEE_API_KEY\` (V2) et \`BLOCKBEE_LTC_ADDRESS\` dans le .env, puis réessaie.`)
     )
   );
 

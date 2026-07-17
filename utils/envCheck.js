@@ -17,6 +17,11 @@ function validateEnv() {
   if (!process.env.BLOCKBEE_API_KEY) {
     errors.push("BLOCKBEE_API_KEY manquant (API Key V2 BlockBee requise)");
   }
+  if (!process.env.BLOCKBEE_LTC_ADDRESS) {
+    warnings.push(
+      "BLOCKBEE_LTC_ADDRESS vide → le bot tentera de récupérer l'adresse SCW via l'API BlockBee"
+    );
+  }
 
   return { ok: errors.length === 0, errors, warnings };
 }

@@ -46,6 +46,58 @@ function isValidLtcAddress(address) {
   return false;
 }
 
+function humanizeBlockbeeError(message) {
+  const raw = String(message || "").trim();
+  if (!raw) return "Erreur BlockBee inconnue";
+
+  if (/address not set on admin panel/i.test(raw)) {
+    return (
+      "Adresse LTC de destination manquante. Deux options :\n" +
+      "1) Dashboard BlockBee → Self-Custodial Wallet → Litecoin → copier l'adresse dans BLOCKBEE_LTC_ADDRESS\n" +
+      "2) Regénérer l'API Key V2 avec la permission **Address Override** activée"
+    );
+  }
+  if (/override permission/i.test(raw)) {
+    return (
+      "Ta clé API V2 n'a pas la permission Address Override. " +
+      "Regénère-la sur dash.blockbee.io avec Address Override activé, " +
+      "ou mets BLOCKBEE_LTC_ADDRESS dans le .env."
+    );
+  }
+  if (/invalid address/i.test(raw)) {
+    return "Adresse LTC invalide dans BLOCKBEE_LTC_ADDRESS. Vérifie l'adresse SCW Litecoin.";
+  }
+  return raw;
+}
+
+let cachedPayoutAddress = null;
+
+async function fetchPayoutWalletAddress() {
+  const data = await blockbeeRequest("GET", `/${TICKER}/payout/address/`);
+  const address = data.address?.trim?.() || String(data.address || "").trim();
+  if (!address || !isValidLtcAddress(address)) {
+    throw new Error("BlockBee n'a pas renvoyé d'adresse SCW LTC valide");
+  }
+  cachedPayoutAddress = address;
+  return address;
+}
+
+async function resolveDestinationAddress() {
+  if (config.blockbeeLtcAddress) {
+    const address = config.blockbeeLtcAddress.trim();
+    if (!isValidLtcAddress(address)) {
+      throw new Error("BLOCKBEE_LTC_ADDRESS invalide dans le .env");
+    }
+    return address;
+  }
+
+  if (cachedPayoutAddress && isValidLtcAddress(cachedPayoutAddress)) {
+    return cachedPayoutAddress;
+  }
+
+  return fetchPayoutWalletAddress();
+}
+
 async function blockbeeRequest(method, path, { query = {}, body } = {}) {
   if (!config.blockbeeApiKey) {
     throw new Error("BLOCKBEE_API_KEY manquant dans le .env (API Key V2)");
@@ -72,7 +124,7 @@ async function blockbeeRequest(method, path, { query = {}, body } = {}) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.status === "error") {
-    throw new Error(data.error || data.message || `HTTP ${res.status}`);
+    throw new Error(humanizeBlockbeeError(data.error || data.message || `HTTP ${res.status}`));
   }
   return data;
 }
@@ -123,7 +175,7 @@ function buildCallbackUrl(dealCode) {
 }
 
 /**
- * Crée une adresse LTC BlockBee. Fonds forwardés vers le wallet/SCW configuré au dashboard.
+ * Crée une adresse LTC BlockBee. Fonds forwardés vers le SCW (param address).
  */
 async function createLtcPayment(deal) {
   try {
@@ -133,10 +185,12 @@ async function createLtcPayment(deal) {
     console.warn("Min LTC check:", err.message);
   }
 
+  const destinationAddress = await resolveDestinationAddress();
   const callback = buildCallbackUrl(deal.deal_code);
   const data = await blockbeeRequest("GET", `/${TICKER}/create/`, {
     query: {
       callback,
+      address: destinationAddress,
       confirmations: "1",
       pending: "1",
       json: "1",
@@ -322,6 +376,9 @@ module.exports = {
   getPayoutStatus,
   payoutToSeller,
   resolvePayoutAmount,
+  resolveDestinationAddress,
+  fetchPayoutWalletAddress,
+  humanizeBlockbeeError,
   statusLabel,
   isPaidStatus,
   isActiveStatus,
