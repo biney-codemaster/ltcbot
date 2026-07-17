@@ -6,9 +6,12 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  SeparatorSpacingSize,
   MessageFlags,
 } = require("discord.js");
 const config = require("../config");
+
+const { e, emojis } = config;
 
 const data = new SlashCommandBuilder()
   .setName("setup")
@@ -18,18 +21,33 @@ function buildSetupContainer() {
   const container = new ContainerBuilder();
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `${config.emojiText.info} **Système d'escrow**\n` +
-        `Ce bot sert d'intermédiaire de confiance entre acheteur et vendeur.\n` +
-        `L'argent est retenu jusqu'à confirmation de réception du produit.`
-    )
+    new TextDisplayBuilder().setContent(`# ${e("escrow")}Système d'escrow`)
   );
 
-  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${config.emojiText.deal} Clique ci-dessous pour démarrer un nouveau deal.`
+      `${e("shield")}Intermédiaire de confiance entre **acheteur** et **vendeur**.\n` +
+        `Les fonds sont sécurisés jusqu'à confirmation de réception du produit.\n\n` +
+        `## ${e("info")}Déroulement\n` +
+        `1. Création du deal et salon privé\n` +
+        `2. Choix des rôles (acheteur / vendeur)\n` +
+        `3. Confirmation mutuelle des termes\n` +
+        `4. Paiement crypto puis libération des fonds`
+    )
+  );
+
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("deal")}Nouveau deal\n` +
+        `Cliquez ci-dessous pour ouvrir un deal sécurisé.`
     )
   );
 
@@ -38,9 +56,8 @@ function buildSetupContainer() {
     .setLabel("Start a deal")
     .setStyle(ButtonStyle.Secondary);
 
-  // On ne met l'emoji que s'il est correctement configuré (évite le crash)
-  if (config.emojis.deal) {
-    button.setEmoji(config.emojis.deal);
+  if (emojis.deal) {
+    button.setEmoji(emojis.deal);
   }
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(button));

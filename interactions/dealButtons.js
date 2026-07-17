@@ -8,6 +8,8 @@ const {
   buildCloseTicketContainer,
 } = require("../utils/dealContainer");
 
+const { e } = config;
+
 function getDealByCode(dealCode) {
   return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(dealCode);
 }
@@ -20,16 +22,18 @@ function isStaff(member) {
   return config.staffRoleId && member.roles.cache.has(config.staffRoleId);
 }
 
+function deny(interaction, message) {
+  return interaction.reply({ content: `${e("error")}${message}`, ephemeral: true });
+}
+
 /**
  * Clic sur "Acheteur" ou "Vendeur".
  */
 async function handleRoleButton(interaction, role, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) {
-    return interaction.reply({ content: `${config.emojiText.info} Deal introuvable.`, ephemeral: true });
-  }
+  if (!deal) return deny(interaction, "Deal introuvable.");
   if (!isParticipant(deal, interaction.user.id)) {
-    return interaction.reply({ content: `${config.emojiText.info} Ce deal ne te concerne pas.`, ephemeral: true });
+    return deny(interaction, "Ce deal ne te concerne pas.");
   }
 
   const userId = interaction.user.id;
@@ -69,18 +73,16 @@ async function handleRoleButton(interaction, role, dealCode) {
  */
 async function handleConfirmButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) {
-    return interaction.reply({ content: `${config.emojiText.info} Deal introuvable.`, ephemeral: true });
-  }
+  if (!deal) return deny(interaction, "Deal introuvable.");
   if (!isParticipant(deal, interaction.user.id)) {
-    return interaction.reply({ content: `${config.emojiText.info} Ce deal ne te concerne pas.`, ephemeral: true });
+    return deny(interaction, "Ce deal ne te concerne pas.");
   }
 
   const isInitiator = interaction.user.id === deal.initiator_id;
   const field = isInitiator ? "initiator_confirmed" : "partner_confirmed";
 
   if (deal[field]) {
-    return interaction.reply({ content: `${config.emojiText.info} Tu as déjà confirmé.`, ephemeral: true });
+    return deny(interaction, "Tu as déjà confirmé.");
   }
 
   db.prepare(`UPDATE deals SET ${field} = 1 WHERE deal_code = ?`).run(dealCode);
@@ -92,7 +94,6 @@ async function handleConfirmButton(interaction, dealCode) {
 
     await interaction.update({ components: [buildConfirmationContainer(updatedDeal)] });
 
-    // Étape 3: récap final envoyé en nouveau message
     await interaction.channel.send({
       components: [buildFinalRecapContainer(updatedDeal)],
       flags: MessageFlags.IsComponentsV2,
@@ -108,11 +109,9 @@ async function handleConfirmButton(interaction, dealCode) {
  */
 async function handleWrongRolesButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) {
-    return interaction.reply({ content: `${config.emojiText.info} Deal introuvable.`, ephemeral: true });
-  }
+  if (!deal) return deny(interaction, "Deal introuvable.");
   if (!isParticipant(deal, interaction.user.id)) {
-    return interaction.reply({ content: `${config.emojiText.info} Ce deal ne te concerne pas.`, ephemeral: true });
+    return deny(interaction, "Ce deal ne te concerne pas.");
   }
 
   db.prepare(`
@@ -123,10 +122,8 @@ async function handleWrongRolesButton(interaction, dealCode) {
 
   const updatedDeal = getDealByCode(dealCode);
 
-  // Ferme le message de confirmation actuel (plus de boutons)
   await interaction.update({ components: [] });
 
-  // Envoie un NOUVEAU container de sélection des rôles
   const newRoleMessage = await interaction.channel.send({
     components: [buildRoleSelectionContainer(updatedDeal)],
     flags: MessageFlags.IsComponentsV2,
@@ -143,17 +140,14 @@ async function handleWrongRolesButton(interaction, dealCode) {
  */
 async function handleCancelButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) {
-    return interaction.reply({ content: `${config.emojiText.info} Deal introuvable.`, ephemeral: true });
-  }
+  if (!deal) return deny(interaction, "Deal introuvable.");
   if (!isParticipant(deal, interaction.user.id)) {
-    return interaction.reply({ content: `${config.emojiText.info} Ce deal ne te concerne pas.`, ephemeral: true });
+    return deny(interaction, "Ce deal ne te concerne pas.");
   }
 
   db.prepare(`UPDATE deals SET status = 'cancelled' WHERE deal_code = ?`).run(dealCode);
   const updatedDeal = getDealByCode(dealCode);
 
-  // Ferme le container de sélection des rôles (plus de boutons actifs)
   await interaction.update({ components: [buildRoleSelectionContainer(updatedDeal)] });
 
   await interaction.channel.send({
@@ -167,18 +161,15 @@ async function handleCancelButton(interaction, dealCode) {
  */
 async function handleCloseButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) {
-    return interaction.reply({ content: `${config.emojiText.info} Deal introuvable.`, ephemeral: true });
-  }
+  if (!deal) return deny(interaction, "Deal introuvable.");
 
   if (!isStaff(interaction.member)) {
-    return interaction.reply({
-      content: `${config.emojiText.info} Seul le staff peut fermer ce salon.`,
-      ephemeral: true,
-    });
+    return deny(interaction, "Seul le staff peut fermer ce salon.");
   }
 
-  await interaction.reply({ content: `${config.emojiText.info} Salon fermé par <@${interaction.user.id}>. Suppression dans 5 secondes...` });
+  await interaction.reply({
+    content: `${e("close")}Salon fermé par <@${interaction.user.id}>. Suppression dans 5 secondes...`,
+  });
   setTimeout(() => {
     interaction.channel.delete().catch(() => {});
   }, 5000);

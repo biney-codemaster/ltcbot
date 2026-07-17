@@ -6,6 +6,8 @@ const { buildRoleSelectionContainer } = require("../utils/dealContainer");
 const { fiatToLtc } = require("../utils/ltcPrice");
 const { MessageFlags } = require("discord.js");
 
+const { e } = config;
+
 const CURRENCY_MAP = {
   EUR: "€",
   USD: "$",
@@ -21,14 +23,14 @@ async function handleDealModal(interaction) {
   // --- Validation ID Discord (snowflake) ---
   if (!/^\d{17,20}$/.test(partnerId)) {
     return interaction.reply({
-      content: `${config.emojiText.info} ID Discord invalide. Copie l'ID exact (clic droit sur le membre → Copier l'ID).`,
+      content: `${e("error")}ID Discord invalide. Copie l'ID exact (clic droit sur le membre → Copier l'ID).`,
       ephemeral: true,
     });
   }
 
   if (partnerId === interaction.user.id) {
     return interaction.reply({
-      content: `${config.emojiText.info} Tu ne peux pas faire un deal avec toi-même.`,
+      content: `${e("error")}Tu ne peux pas faire un deal avec toi-même.`,
       ephemeral: true,
     });
   }
@@ -39,14 +41,14 @@ async function handleDealModal(interaction) {
     partnerMember = await interaction.guild.members.fetch(partnerId);
   } catch {
     return interaction.reply({
-      content: `${config.emojiText.info} Ce membre est introuvable sur ce serveur.`,
+      content: `${e("error")}Ce membre est introuvable sur ce serveur.`,
       ephemeral: true,
     });
   }
 
   if (partnerMember.user.bot) {
     return interaction.reply({
-      content: `${config.emojiText.info} Tu ne peux pas faire un deal avec un bot.`,
+      content: `${e("error")}Tu ne peux pas faire un deal avec un bot.`,
       ephemeral: true,
     });
   }
@@ -55,7 +57,7 @@ async function handleDealModal(interaction) {
   const price = Number(priceRaw.replace(",", "."));
   if (!Number.isFinite(price) || price <= 0) {
     return interaction.reply({
-      content: `${config.emojiText.info} Prix invalide. Entre un nombre positif, sans symbole (ex: 25.50).`,
+      content: `${e("error")}Prix invalide. Entre un nombre positif, sans symbole (ex: 25.50).`,
       ephemeral: true,
     });
   }
@@ -64,7 +66,7 @@ async function handleDealModal(interaction) {
   const currency = CURRENCY_MAP[currencyValue];
   if (!currency) {
     return interaction.reply({
-      content: `${config.emojiText.info} Devise invalide. Choisis € ou $ dans le menu.`,
+      content: `${e("error")}Devise invalide. Choisis € ou $ dans le menu.`,
       ephemeral: true,
     });
   }
@@ -72,7 +74,7 @@ async function handleDealModal(interaction) {
   // --- Validation crypto (menu) ---
   if (crypto !== "LTC") {
     return interaction.reply({
-      content: `${config.emojiText.info} Crypto non supportée pour le moment. Choisis Litecoin (LTC).`,
+      content: `${e("error")}Crypto non supportée pour le moment. Choisis Litecoin (LTC).`,
       ephemeral: true,
     });
   }
@@ -85,7 +87,7 @@ async function handleDealModal(interaction) {
   } catch (err) {
     console.error("Conversion LTC impossible:", err.message);
     return interaction.reply({
-      content: `${config.emojiText.info} Impossible de récupérer le cours LTC pour le moment. Réessaie dans quelques secondes.`,
+      content: `${e("warning")}Impossible de récupérer le cours LTC pour le moment. Réessaie dans quelques secondes.`,
       ephemeral: true,
     });
   }
@@ -140,7 +142,7 @@ async function handleDealModal(interaction) {
   });
 
   await interaction.reply({
-    content: `${config.emojiText.deal} Deal #${dealCode} créé. Rendez-vous dans ${channel} pour continuer.`,
+    content: `${e("success")}Deal #${dealCode} créé. Rendez-vous dans ${channel} pour continuer.`,
     ephemeral: true,
   });
 }
