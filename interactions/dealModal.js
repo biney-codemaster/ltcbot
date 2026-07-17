@@ -80,7 +80,7 @@ async function handleDealModal(interaction) {
     });
   }
 
-  // --- Minimum Plisio (~0.002 LTC, bloquant si cours dispo) ---
+  // --- Minimum Plisio (quasi dust, rarement bloquant) ---
   try {
     await assertAboveMinAmount({ price, currency, crypto });
   } catch (err) {
