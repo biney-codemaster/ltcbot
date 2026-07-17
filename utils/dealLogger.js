@@ -166,40 +166,58 @@ async function logPublicCompleted(client, deal) {
 
 /** Ping des salons logs au démarrage (diagnostic détaillé). */
 async function probeLogChannels(client) {
+  dumpRelatedEnvKeys();
+
   const targets = [
-    "ADMIN_LOGS_CHANNEL_ID",
-    "PUBLIC_LOGS_CHANNEL_ID",
-    "REVIEWS_CHANNEL_ID",
+    ["ADMIN_LOGS_CHANNEL_ID", ["ADMIN_LOGS_CHANNEL_ID", "ADMIN_LOG_CHANNEL_ID", "LOGS_ADMIN_CHANNEL_ID"]],
+    ["PUBLIC_LOGS_CHANNEL_ID", ["PUBLIC_LOGS_CHANNEL_ID", "PUBLIC_LOG_CHANNEL_ID", "LOGS_PUBLIC_CHANNEL_ID"]],
+    ["REVIEWS_CHANNEL_ID", ["REVIEWS_CHANNEL_ID", "REVIEW_CHANNEL_ID", "AVIS_CHANNEL_ID"]],
   ];
 
   console.log("[logs] Diagnostic .env salons:");
-  for (const envKey of targets) {
-    const diag = diagnoseChannelEnv(envKey);
+  for (const [label, keys] of targets) {
+    let diag = { ok: false, reason: "aucune clé trouvée" };
+    let usedKey = label;
+    for (const key of keys) {
+      if (process.env[key] === undefined) continue;
+      const d = diagnoseChannelEnv(key);
+      diag = d;
+      usedKey = key;
+      if (d.ok) break;
+    }
     if (!diag.ok) {
-      console.warn(`[logs] ${envKey} → ${diag.reason}`);
+      console.warn(`[logs] ${label} → ${diag.reason}`);
       continue;
     }
     try {
       const ch = await client.channels.fetch(diag.id);
-      console.log(`[logs] ${envKey} OK → #${ch.name} (${diag.id})`);
+      console.log(`[logs] ${usedKey} OK → #${ch.name} (${diag.id})`);
     } catch (err) {
       console.error(
-        `[logs] ${envKey} ID lu (${diag.id}) mais salon inaccessible: ${err.message}`
+        `[logs] ${usedKey} ID lu (${diag.id}) mais salon inaccessible: ${err.message}`
       );
       console.error(
-        "[logs] → le bot doit voir le salon (permissions) et l'ID doit être celui du salon, pas du serveur"
+        "[logs] → permissions bot sur le salon, ou mauvais ID (salon vs serveur)"
       );
     }
   }
 
-  // Recharge depuis process.env (au cas où config a été figé avec valeurs vides)
-  const adminId = cleanChannelId(process.env.ADMIN_LOGS_CHANNEL_ID);
-  if (adminId) {
-    // sync config runtime
-    config.adminLogsChannelId = adminId;
-    config.publicLogsChannelId = cleanChannelId(process.env.PUBLIC_LOGS_CHANNEL_ID);
-    config.reviewsChannelId = cleanChannelId(process.env.REVIEWS_CHANNEL_ID);
+  const adminId =
+    cleanChannelId(process.env.ADMIN_LOGS_CHANNEL_ID) ||
+    cleanChannelId(process.env.ADMIN_LOG_CHANNEL_ID) ||
+    cleanChannelId(process.env.LOGS_ADMIN_CHANNEL_ID);
 
+  config.adminLogsChannelId = adminId;
+  config.publicLogsChannelId =
+    cleanChannelId(process.env.PUBLIC_LOGS_CHANNEL_ID) ||
+    cleanChannelId(process.env.PUBLIC_LOG_CHANNEL_ID) ||
+    cleanChannelId(process.env.LOGS_PUBLIC_CHANNEL_ID);
+  config.reviewsChannelId =
+    cleanChannelId(process.env.REVIEWS_CHANNEL_ID) ||
+    cleanChannelId(process.env.REVIEW_CHANNEL_ID) ||
+    cleanChannelId(process.env.AVIS_CHANNEL_ID);
+
+  if (adminId) {
     await logAdmin(client, "Bot démarré", [
       `Bot connecté — logs admin opérationnels.`,
       `Public logs: ${config.publicLogsChannelId ? "OK" : "non configuré"}`,
@@ -207,12 +225,11 @@ async function probeLogChannels(client) {
     ]);
   } else {
     console.warn(
-      "[logs] Aucun ADMIN_LOGS_CHANNEL_ID valide → aucun log Discord ne partira.\n" +
-        "Exemple dans .env (sans espaces, sans guillemets nécessaires):\n" +
+      "[logs] Aucun ID admin valide dans process.env.\n" +
+        "Ouvre le fichier .env DANS le serveur HostMaster et vérifie ces lignes EXACTES:\n" +
         "ADMIN_LOGS_CHANNEL_ID=123456789012345678\n" +
         "PUBLIC_LOGS_CHANNEL_ID=123456789012345678\n" +
-        "REVIEWS_CHANNEL_ID=123456789012345678\n" +
-        "Astuce: Mode développeur Discord → clic droit salon → Copier l'identifiant du salon"
+        "REVIEWS_CHANNEL_ID=123456789012345678"
     );
   }
 }
