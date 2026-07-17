@@ -14,12 +14,12 @@ function validateEnv() {
   if (!process.env.STAFF_ROLE_ID) {
     warnings.push("STAFF_ROLE_ID vide → le staff n'aura pas accès aux salons / fermetures");
   }
-  if (!process.env.OXAPAY_MERCHANT_API_KEY) {
-    errors.push("OXAPAY_MERCHANT_API_KEY manquant (création d'adresses LTC impossible)");
+  if (!process.env.BLOCKBEE_API_KEY) {
+    errors.push("BLOCKBEE_API_KEY manquant (API Key V2 BlockBee requise)");
   }
-  if (!process.env.OXAPAY_PAYOUT_API_KEY) {
+  if (!process.env.BLOCKBEE_LTC_ADDRESS) {
     warnings.push(
-      "OXAPAY_PAYOUT_API_KEY manquant → payout vendeur impossible (libération des fonds)"
+      "BLOCKBEE_LTC_ADDRESS vide → le bot tentera de récupérer l'adresse SCW via l'API BlockBee"
     );
   }
 

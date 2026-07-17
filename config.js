@@ -66,9 +66,9 @@ module.exports = {
   clientId: process.env.CLIENT_ID,
   guildId: process.env.GUILD_ID, // pour enregistrer les commandes en dev (instant), sinon global
   staffRoleId: process.env.STAFF_ROLE_ID, // rôle staff/médiateur ayant accès aux salons de deal
-  oxapayMerchantApiKey: process.env.OXAPAY_MERCHANT_API_KEY || null,
-  oxapayPayoutApiKey: process.env.OXAPAY_PAYOUT_API_KEY || null,
-  oxapayCallbackUrl: process.env.OXAPAY_CALLBACK_URL || null,
+  blockbeeApiKey: (process.env.BLOCKBEE_API_KEY || "").trim() || null,
+  // Adresse SCW LTC où BlockBee forward les paiements (Dashboard → Self-Custodial Wallet → Litecoin)
+  blockbeeLtcAddress: (process.env.BLOCKBEE_LTC_ADDRESS || "").trim() || null,
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages

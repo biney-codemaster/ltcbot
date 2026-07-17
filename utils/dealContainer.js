@@ -9,7 +9,7 @@ const {
 } = require("discord.js");
 const config = require("../config");
 const { formatLtcAmount } = require("./ltcPrice");
-const { statusLabel } = require("./oxapay");
+const { statusLabel } = require("./blockbee");
 
 const { e, emojis } = config;
 
@@ -211,7 +211,11 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   addStandardHeader(container, deal);
 
   const isMin =
-    /Bloqué par l'API OxaPay|montant trop|too small|minimum|BELOW_MINIMUM/i.test(
+    /Bloqué par l'API BlockBee|montant trop|too small|minimum|BELOW_MINIMUM/i.test(
+      String(errorMessage || "")
+    );
+  const isAddress =
+    /address not set|override permission|BLOCKBEE_LTC_ADDRESS|Adresse LTC de destination/i.test(
       String(errorMessage || "")
     );
 
@@ -220,8 +224,14 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
       `## ${e("error")}Adresse de paiement indisponible\n` +
         `Erreur : \`${errorMessage || "inconnue"}\`\n\n` +
         (isMin
-          ? `${e("info")}Montant sous le minimum OxaPay (≈ 0.002 LTC). Augmente légèrement le prix du deal.`
-          : `${e("next")}Réessayez une fois la config OxaPay corrigée (Merchant / Payout API keys).`)
+          ? `${e("info")}Montant sous le minimum BlockBee (~0.002 LTC). Augmente le prix à au moins ~0.20€.`
+          : isAddress
+            ? `${e("next")}**Fix rapide :**\n` +
+              `1. dash.blockbee.io → **Self-Custodial Wallet → Litecoin** → copie l'adresse\n` +
+              `2. Mets-la dans \`BLOCKBEE_LTC_ADDRESS\` du .env\n` +
+              `3. Regénère l'API Key V2 avec **Address Override** coché\n` +
+              `4. Relance le bot puis clique **Régénérer l'adresse**`
+            : `${e("next")}Vérifie \`BLOCKBEE_API_KEY\` (V2) et \`BLOCKBEE_LTC_ADDRESS\` dans le .env, puis réessaie.`)
     )
   );
 
@@ -287,7 +297,7 @@ function buildFundsHeldContainer(deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("shield")}Fonds sécurisés\n` +
-        `${e("success")}Le paiement a été reçu et est conservé sur le **solde OxaPay** (escrow).\n\n` +
+        `${e("success")}Le paiement a été reçu et est conservé sur le **Self-Custodial Wallet BlockBee** (escrow).\n\n` +
         `${e("seller")}<@${deal.seller_id}> — livrez le produit à l'acheteur.\n` +
         `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
         `${walletLine}${payoutErrorLine}`
@@ -338,7 +348,7 @@ function buildReleasedContainer(deal) {
   if (deal.payout_error) {
     payoutText =
       `${e("error")}Échec du payout automatique : \`${deal.payout_error}\`\n` +
-      `${e("staff")}Libérez manuellement depuis le dashboard OxaPay vers \`${wallet}\`.`;
+      `${e("staff")}Libérez manuellement depuis le dashboard BlockBee vers \`${wallet}\`.`;
   } else {
     payoutText =
       `${e("success")}Payout initié vers le vendeur.\n` +

@@ -6,7 +6,7 @@ const {
   isFailedStatus,
   statusLabel,
   resolvePayoutAmount,
-} = require("./oxapay");
+} = require("./blockbee");
 const {
   buildPaymentContainer,
   buildFundsHeldContainer,
@@ -57,7 +57,7 @@ function getPendingPayoutDeals() {
          AND payout_id IS NOT NULL
          AND payout_id != ''
          AND payout_status IS NOT NULL
-         AND payout_status NOT IN ('finished', 'confirmed', 'failed', 'rejected', 'expired', 'canceled')`
+         AND payout_status NOT IN ('finished', 'confirmed', 'completed', 'done', 'failed', 'rejected', 'expired', 'canceled')`
     )
     .all();
 }

@@ -35,6 +35,7 @@ const {
 require("./database"); // initialise la DB au démarrage
 const { startPaymentPoller } = require("./utils/paymentPoller");
 const { logEnvValidation } = require("./utils/envCheck");
+const { pingBlockbee } = require("./utils/blockbee");
 
 if (!logEnvValidation()) {
   process.exit(1);
@@ -137,10 +138,16 @@ function buildDealModal() {
   return modal;
 }
 
-client.once(Events.ClientReady, () => {
+client.once(Events.ClientReady, async () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
+  try {
+    await pingBlockbee();
+    console.log("BlockBee API OK (clé valide).");
+  } catch (err) {
+    console.error("BlockBee API KO au démarrage:", err.message);
+  }
   startPaymentPoller(client);
-  console.log("Polling OxaPay démarré (30s).");
+  console.log("Polling BlockBee démarré (30s).");
 });
 
 client.on("interactionCreate", async (interaction) => {
