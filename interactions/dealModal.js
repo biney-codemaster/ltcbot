@@ -4,6 +4,7 @@ const { createDealChannel } = require("../utils/dealChannel");
 const { generateUniqueDealCode } = require("../utils/dealCode");
 const { buildRoleSelectionContainer } = require("../utils/dealContainer");
 const { fiatToLtc } = require("../utils/ltcPrice");
+const { assertAboveMinAmount } = require("../utils/nowpayments");
 const { MessageFlags } = require("discord.js");
 
 const { e } = config;
@@ -24,14 +25,14 @@ async function handleDealModal(interaction) {
   if (!/^\d{17,20}$/.test(partnerId)) {
     return interaction.reply({
       content: `${e("error")}ID Discord invalide. Copie l'ID exact (clic droit sur le membre → Copier l'ID).`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
   if (partnerId === interaction.user.id) {
     return interaction.reply({
       content: `${e("error")}Tu ne peux pas faire un deal avec toi-même.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -42,14 +43,14 @@ async function handleDealModal(interaction) {
   } catch {
     return interaction.reply({
       content: `${e("error")}Ce membre est introuvable sur ce serveur.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
   if (partnerMember.user.bot) {
     return interaction.reply({
       content: `${e("error")}Tu ne peux pas faire un deal avec un bot.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -58,7 +59,7 @@ async function handleDealModal(interaction) {
   if (!Number.isFinite(price) || price <= 0) {
     return interaction.reply({
       content: `${e("error")}Prix invalide. Entre un nombre positif, sans symbole (ex: 25.50).`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -67,7 +68,7 @@ async function handleDealModal(interaction) {
   if (!currency) {
     return interaction.reply({
       content: `${e("error")}Devise invalide. Choisis € ou $ dans le menu.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -75,8 +76,21 @@ async function handleDealModal(interaction) {
   if (crypto !== "LTC") {
     return interaction.reply({
       content: `${e("error")}Crypto non supportée pour le moment. Choisis Litecoin (LTC).`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
+  }
+
+  // --- Minimum NOWPayments (bloquant si l'API répond) ---
+  try {
+    await assertAboveMinAmount({ price, currency, crypto });
+  } catch (err) {
+    if (err.code === "BELOW_MINIMUM") {
+      return interaction.reply({
+        content: `${e("error")}${err.message}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    console.warn("Min-amount check au formulaire:", err.message);
   }
 
   // --- Conversion fiat -> crypto pour affichage (non bloquant si API down) ---
@@ -139,7 +153,7 @@ async function handleDealModal(interaction) {
 
   await interaction.reply({
     content: `${e("success")}Deal #${dealCode} créé. Rendez-vous dans ${channel} pour continuer.`,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }
 

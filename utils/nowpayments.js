@@ -113,14 +113,90 @@ function generateTotpCode() {
 }
 
 /**
+ * Minimum dynamique NOWPayments pour une paire (ex: eur → ltc).
+ * Doc: ~2$ pour LTC, variable selon frais réseau — non contournable côté bot.
+ */
+async function getMinPaymentAmount({ currencyFrom, currencyTo, fiatEquivalent, isFixedRate = true }) {
+  const params = new URLSearchParams({
+    currency_from: currencyFrom,
+    currency_to: currencyTo,
+    is_fixed_rate: String(!!isFixedRate),
+  });
+  if (fiatEquivalent) params.set("fiat_equivalent", fiatEquivalent);
+  return nowpaymentsRequest("GET", `/min-amount?${params.toString()}`);
+}
+
+function belowMinimumError({ currency, price, minFiat, minCrypto, payCurrency }) {
+  const minLabel =
+    Number.isFinite(minFiat) && minFiat > 0
+      ? `≈ ${minFiat.toFixed(2)}${currency}`
+      : Number.isFinite(minCrypto) && minCrypto > 0
+        ? `≈ ${minCrypto} ${String(payCurrency || "LTC").toUpperCase()}`
+        : "le seuil NOWPayments (souvent ≈ 2$)";
+
+  const err = new Error(
+    `Bloqué par l'API NOWPayments — montant trop bas. ` +
+      `Minimum actuel ${minLabel} (ton deal: ${price}${currency}). ` +
+      `Le bot ne peut pas forcer un paiement en dessous de ce seuil.`
+  );
+  err.code = "BELOW_MINIMUM";
+  err.minFiat = minFiat;
+  err.minCrypto = minCrypto;
+  return err;
+}
+
+/**
+ * Vérifie le prix du deal contre le minimum live NOWPayments.
+ * @returns {Promise<{ minFiat: number|null, minCrypto: number|null }>}
+ */
+async function assertAboveMinAmount(deal) {
+  const priceCurrency = fiatCurrencyCode(deal.currency);
+  const payCurrency = String(deal.crypto || "LTC").toLowerCase();
+  const price = Number(deal.price);
+
+  const minInfo = await getMinPaymentAmount({
+    currencyFrom: priceCurrency,
+    currencyTo: payCurrency,
+    fiatEquivalent: priceCurrency,
+    isFixedRate: true,
+  });
+
+  const minCrypto = Number(minInfo.min_amount);
+  const minFiat = Number(minInfo.fiat_equivalent);
+
+  if (Number.isFinite(minFiat) && minFiat > 0 && price < minFiat) {
+    throw belowMinimumError({
+      currency: deal.currency,
+      price,
+      minFiat,
+      minCrypto,
+      payCurrency,
+    });
+  }
+
+  return {
+    minFiat: Number.isFinite(minFiat) ? minFiat : null,
+    minCrypto: Number.isFinite(minCrypto) ? minCrypto : null,
+  };
+}
+
+/**
  * Crée un paiement LTC via NOWPayments pour un deal.
  */
 async function createLtcPayment(deal) {
   const priceCurrency = fiatCurrencyCode(deal.currency);
   const payCurrency = String(deal.crypto || "LTC").toLowerCase();
+  const price = Number(deal.price);
+
+  try {
+    await assertAboveMinAmount(deal);
+  } catch (err) {
+    if (err.code === "BELOW_MINIMUM") throw err;
+    console.warn("Vérification min-amount impossible:", err.message);
+  }
 
   const payload = {
-    price_amount: Number(deal.price),
+    price_amount: price,
     price_currency: priceCurrency,
     pay_currency: payCurrency,
     order_id: deal.deal_code,
@@ -132,7 +208,35 @@ async function createLtcPayment(deal) {
     payload.ipn_callback_url = config.nowpaymentsIpnUrl;
   }
 
-  return nowpaymentsRequest("POST", "/payment", payload);
+  try {
+    return await nowpaymentsRequest("POST", "/payment", payload);
+  } catch (err) {
+    const raw = String(err.message || "");
+    if (/amountTo is too small|too small|minimum/i.test(raw)) {
+      let minFiat = null;
+      let minCrypto = null;
+      try {
+        const minInfo = await getMinPaymentAmount({
+          currencyFrom: priceCurrency,
+          currencyTo: payCurrency,
+          fiatEquivalent: priceCurrency,
+          isFixedRate: true,
+        });
+        minFiat = Number(minInfo.fiat_equivalent);
+        minCrypto = Number(minInfo.min_amount);
+      } catch {
+        // ignore — on affiche quand même le refus API
+      }
+      throw belowMinimumError({
+        currency: deal.currency,
+        price,
+        minFiat,
+        minCrypto,
+        payCurrency,
+      });
+    }
+    throw err;
+  }
 }
 
 async function getPaymentStatus(paymentId) {
@@ -241,6 +345,8 @@ function isFailedStatus(status) {
 
 module.exports = {
   createLtcPayment,
+  getMinPaymentAmount,
+  assertAboveMinAmount,
   getPaymentStatus,
   getPayoutStatus,
   payoutToSeller,

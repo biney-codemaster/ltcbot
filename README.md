@@ -32,6 +32,17 @@ npm start
 | `NOWPAYMENTS_2FA_SECRET` | optionnel | Valide auto les payouts (TOTP app) |
 | `NOWPAYMENTS_IPN_URL` | optionnel | Webhook (non requis : polling 30s) |
 
+## Minimum de montant (NOWPayments)
+
+**Le bot accepte n'importe quel prix, mais l'API NOWPayments refuse les trop petits paiements.**
+
+- Pour LTC, leur minimum tourne souvent autour de **≈ 2$** (équivalent € variable).
+- Le seuil est **dynamique** (frais réseau) : le bot le lit via `GET /v1/min-amount` avant de créer le paiement.
+- Si tu mets 0.05€ → erreur `amountTo is too small` / message « Bloqué par l'API NOWPayments ». Ce n'est **pas** contournable côté bot.
+- Pour un essai réel : deal **≥ ~2–3€ / $** (idéalement un peu au-dessus du minimum live).
+
+Vérifier le minimum live : [NOWPayments Status](https://nowpayments.io/status) ou l'endpoint `/v1/min-amount`.
+
 ## NOWPayments (Custody)
 
 1. Dashboard → **Custody** → activer
@@ -54,10 +65,10 @@ npm start
 
 Dans `config.js`, remplace chaque `null` par `<:nom:id>` (copie via `\:emoji:` sur Discord).
 
-## Test rapide
+## Mise en prod
 
-1. Remplir `.env` + Custody ON
-2. `npm start`
+1. Remplir `.env` + Custody ON + (idéalement) `NOWPAYMENTS_2FA_SECRET`
+2. `npm start` sur le VPS
 3. `/setup` sur le serveur
-4. Deal test entre 2 comptes
-5. Petit paiement LTC réel (sandbox NOWPayments si disponible)
+4. Premier deal réel **au-dessus du minimum NOWPayments** (~2–3€+)
+5. Vérifier payout : whitelist IP + adresses vendeur assouplie

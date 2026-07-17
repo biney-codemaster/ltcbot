@@ -201,11 +201,18 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   const container = new ContainerBuilder();
   addStandardHeader(container, deal);
 
+  const isMin =
+    /Bloqué par l'API NOWPayments|montant trop|too small|minimum/i.test(
+      String(errorMessage || "")
+    );
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("error")}Adresse de paiement indisponible\n` +
         `Erreur : \`${errorMessage || "inconnue"}\`\n\n` +
-        `${e("next")}Réessayez la génération une fois la config NOWPayments corrigée.`
+        (isMin
+          ? `${e("info")}Ce n'est **pas** un bug du bot : NOWPayments refuse les montants sous leur minimum (souvent ≈ 2$ / équivalent €). Augmente le prix du deal.`
+          : `${e("next")}Réessayez une fois la config NOWPayments corrigée (API key, Custody, etc.).`)
     )
   );
 
