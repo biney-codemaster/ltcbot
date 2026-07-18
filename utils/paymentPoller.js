@@ -21,7 +21,7 @@ const { e } = require("../config");
 const { logAdmin } = require("./dealLogger");
 const { formatLtcAmount } = require("./ltcPrice");
 
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 5_000;
 /** @type {import('discord.js').Client | null} */
 let client = null;
 /** @type {ReturnType<typeof setInterval> | null} */

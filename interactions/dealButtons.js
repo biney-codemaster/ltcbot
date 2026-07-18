@@ -36,6 +36,7 @@ const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/payment
 const { formatLtcAmount } = require("../utils/ltcPrice");
 const { logAdmin } = require("../utils/dealLogger");
 const { finalizeDealAfterReview } = require("../utils/dealFinalize");
+const { isUserAnonymous } = require("../utils/userPrefs");
 
 const { e } = config;
 
@@ -72,6 +73,12 @@ function denyUnlessBuyer(interaction, deal) {
 /** Vendeur (ou staff). */
 function denyUnlessSeller(interaction, deal) {
   if (isSeller(deal, interaction.user.id) || isStaff(interaction.member)) return null;
+  if (isBuyer(deal, interaction.user.id)) {
+    return deny(
+      interaction,
+      "Seul le **vendeur** peut définir ou modifier l'adresse de retrait. L'acheteur ne peut pas la changer."
+    );
+  }
   return deny(interaction, "Seul le **vendeur** peut utiliser ce bouton.");
 }
 
@@ -854,7 +861,7 @@ async function handleReviewButton(interaction, dealCode) {
 
   const modal = new ModalBuilder()
     .setCustomId(`deal_review_modal:${dealCode}`)
-    .setTitle("Avis sur le deal");
+    .setTitle("Avis sur le bot");
 
   const ratingLabel = new LabelBuilder()
     .setLabel("Note")
@@ -864,11 +871,11 @@ async function handleReviewButton(interaction, dealCode) {
         .setPlaceholder("Choisir une note")
         .setRequired(true)
         .addOptions(
-          new StringSelectMenuOptionBuilder().setLabel("5 — Excellent").setValue("5"),
-          new StringSelectMenuOptionBuilder().setLabel("4 — Bien").setValue("4"),
-          new StringSelectMenuOptionBuilder().setLabel("3 — Correct").setValue("3"),
-          new StringSelectMenuOptionBuilder().setLabel("2 — Décevant").setValue("2"),
-          new StringSelectMenuOptionBuilder().setLabel("1 — Mauvais").setValue("1")
+          new StringSelectMenuOptionBuilder().setLabel("★★★★★").setValue("5"),
+          new StringSelectMenuOptionBuilder().setLabel("★★★★☆").setValue("4"),
+          new StringSelectMenuOptionBuilder().setLabel("★★★☆☆").setValue("3"),
+          new StringSelectMenuOptionBuilder().setLabel("★★☆☆☆").setValue("2"),
+          new StringSelectMenuOptionBuilder().setLabel("★☆☆☆☆").setValue("1")
         )
     );
 
@@ -880,27 +887,10 @@ async function handleReviewButton(interaction, dealCode) {
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
         .setMaxLength(800)
-        .setPlaceholder("Décrivez votre expérience…")
+        .setPlaceholder("Ton expérience avec le bot escrow…")
     );
 
-  const anonLabel = new LabelBuilder()
-    .setLabel("Publier anonymement ?")
-    .setStringSelectMenuComponent(
-      new StringSelectMenuBuilder()
-        .setCustomId("review_anonymous")
-        .setPlaceholder("Anonymat")
-        .setRequired(true)
-        .addOptions(
-          new StringSelectMenuOptionBuilder()
-            .setLabel("Non — afficher mon profil")
-            .setValue("no"),
-          new StringSelectMenuOptionBuilder()
-            .setLabel("Oui — avis anonyme")
-            .setValue("yes")
-        )
-    );
-
-  modal.addLabelComponents(ratingLabel, textLabel, anonLabel);
+  modal.addLabelComponents(ratingLabel, textLabel);
   await interaction.showModal(modal);
 }
 
@@ -919,8 +909,7 @@ async function handleReviewModal(interaction) {
 
   const rating = Number(interaction.fields.getStringSelectValues("review_rating")[0]);
   const text = interaction.fields.getTextInputValue("review_text").trim();
-  const anonymous =
-    interaction.fields.getStringSelectValues("review_anonymous")[0] === "yes";
+  const anonymous = isUserAnonymous(interaction.user.id);
 
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
     return deny(interaction, "Note invalide.");

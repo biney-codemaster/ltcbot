@@ -5,9 +5,10 @@ const {
   SeparatorBuilder,
   SeparatorSpacingSize,
   MessageFlags,
+  ComponentType,
+  ButtonStyle,
 } = require("discord.js");
 const config = require("../config");
-const { formatLtcAmount } = require("./ltcPrice");
 const { formatWhen } = require("./dealLogger");
 
 const { e } = config;
@@ -20,14 +21,173 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function markdownLiteToHtml(text) {
+  let s = escapeHtml(text || "");
+  s = s.replace(/\n/g, "<br>");
+  // headings
+  s = s.replace(/(^|<br>)#\s+(.+?)(?=<br>|$)/g, "$1<h3 class='md-h'>$2</h3>");
+  s = s.replace(/(^|<br>)##\s+(.+?)(?=<br>|$)/g, "$1<h4 class='md-h'>$2</h4>");
+  // bold / italic / code
+  s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
+  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+  // discord mentions / custom emoji (display raw)
+  return s;
+}
+
+function buttonStyleClass(style) {
+  switch (Number(style)) {
+    case ButtonStyle.Primary:
+    case 1:
+      return "btn btn-primary";
+    case ButtonStyle.Success:
+    case 3:
+      return "btn btn-success";
+    case ButtonStyle.Danger:
+    case 4:
+      return "btn btn-danger";
+    case ButtonStyle.Link:
+    case 5:
+      return "btn btn-link";
+    default:
+      return "btn btn-secondary";
+  }
+}
+
+function renderButton(btn) {
+  const data = btn.data || btn;
+  const label = escapeHtml(data.label || "Bouton");
+  const disabled = data.disabled ? " disabled" : "";
+  const cls = buttonStyleClass(data.style);
+  const emoji = data.emoji?.name ? `${escapeHtml(data.emoji.name)} ` : "";
+  if (data.style === ButtonStyle.Link || data.url) {
+    return `<a class="${cls}${disabled}" href="${escapeHtml(data.url || "#")}">${emoji}${label}</a>`;
+  }
+  return `<span class="${cls}${disabled}">${emoji}${label}</span>`;
+}
+
+function renderSelect(select) {
+  const data = select.data || select;
+  const placeholder = escapeHtml(data.placeholder || "Sélection");
+  const options = (data.options || [])
+    .map((o) => `<option>${escapeHtml(o.label || o.value || "")}</option>`)
+    .join("");
+  return (
+    `<div class="select-wrap">` +
+    `<select disabled><option>${placeholder}</option>${options}</select>` +
+    `</div>`
+  );
+}
+
+function renderActionRow(row) {
+  const kids = row.components || [];
+  const inner = kids
+    .map((c) => {
+      const type = c.type ?? c.data?.type;
+      if (type === ComponentType.Button || type === 2) return renderButton(c);
+      if (
+        type === ComponentType.StringSelect ||
+        type === ComponentType.UserSelect ||
+        type === ComponentType.RoleSelect ||
+        type === ComponentType.MentionableSelect ||
+        type === ComponentType.ChannelSelect ||
+        type === 3 ||
+        type === 5 ||
+        type === 6 ||
+        type === 7 ||
+        type === 8
+      ) {
+        return renderSelect(c);
+      }
+      return "";
+    })
+    .join("");
+  return inner ? `<div class="action-row">${inner}</div>` : "";
+}
+
+function renderTextDisplay(comp) {
+  const content = comp.data?.content ?? comp.content ?? "";
+  return `<div class="text-display">${markdownLiteToHtml(content)}</div>`;
+}
+
+function renderSeparator() {
+  return `<hr class="sep"/>`;
+}
+
+function renderComponent(comp) {
+  const type = comp.type ?? comp.data?.type;
+  if (type === ComponentType.Container || type === 17) {
+    const kids = (comp.components || []).map(renderComponent).join("");
+    return `<div class="v2-container">${kids}</div>`;
+  }
+  if (type === ComponentType.TextDisplay || type === 10) {
+    return renderTextDisplay(comp);
+  }
+  if (type === ComponentType.Separator || type === 14) {
+    return renderSeparator();
+  }
+  if (type === ComponentType.ActionRow || type === 1) {
+    return renderActionRow(comp);
+  }
+  if (type === ComponentType.Section || type === 9) {
+    const kids = (comp.components || []).map(renderComponent).join("");
+    return `<div class="section">${kids}</div>`;
+  }
+  if (type === ComponentType.MediaGallery || type === 12) {
+    return `<div class="muted">[galerie média]</div>`;
+  }
+  if (type === ComponentType.File || type === 13) {
+    return `<div class="muted">[fichier]</div>`;
+  }
+  // Legacy action rows without explicit type
+  if (Array.isArray(comp.components) && comp.components.some((c) => (c.type ?? c.data?.type) === 2)) {
+    return renderActionRow(comp);
+  }
+  return "";
+}
+
+function renderMessageBody(msg) {
+  const parts = [];
+  if (msg.content) {
+    parts.push(`<div class="plain">${markdownLiteToHtml(msg.content)}</div>`);
+  }
+  if (msg.embeds?.length) {
+    for (const emb of msg.embeds) {
+      const title = emb.title ? `<div class="embed-title">${escapeHtml(emb.title)}</div>` : "";
+      const desc = emb.description
+        ? `<div class="embed-desc">${markdownLiteToHtml(emb.description)}</div>`
+        : "";
+      parts.push(`<div class="embed">${title}${desc}</div>`);
+    }
+  }
+  if (msg.components?.length) {
+    for (const top of msg.components) {
+      parts.push(renderComponent(top));
+    }
+  }
+  if (msg.attachments?.size > 0) {
+    const files = [...msg.attachments.values()]
+      .map((a) => `<a href="${escapeHtml(a.url)}">${escapeHtml(a.name)}</a>`)
+      .join(", ");
+    parts.push(`<div class="files">${files}</div>`);
+  }
+  if (parts.length === 0) {
+    return `<em class="muted">(vide)</em>`;
+  }
+  return parts.join("");
+}
+
 /**
- * Génère un transcript HTML du salon de deal.
+ * Transcript HTML = le ticket tel quel (containers + boutons), sans fiche résumé.
  */
 async function buildHtmlTranscript(channel, deal) {
   const messages = [];
   let lastId;
   for (let i = 0; i < 20; i++) {
-    const batch = await channel.messages.fetch({ limit: 100, ...(lastId ? { before: lastId } : {}) });
+    const batch = await channel.messages.fetch({
+      limit: 100,
+      ...(lastId ? { before: lastId } : {}),
+    });
     if (batch.size === 0) break;
     const arr = [...batch.values()];
     messages.push(...arr);
@@ -39,70 +199,66 @@ async function buildHtmlTranscript(channel, deal) {
 
   const rows = messages
     .map((msg) => {
-      const time = new Date(msg.createdTimestamp).toISOString();
-      const author = `${msg.author?.tag || "inconnu"} (${msg.author?.id || "?"})`;
-      const content = escapeHtml(msg.content || "").replace(/\n/g, "<br>");
-      const embeds =
-        msg.embeds?.length > 0
-          ? `<div class="embeds">[embed x${msg.embeds.length}]</div>`
-          : "";
-      const comps =
-        msg.components?.length > 0
-          ? `<div class="components">[composants Discord]</div>`
-          : "";
-      const atts =
-        msg.attachments?.size > 0
-          ? `<div class="files">${[...msg.attachments.values()]
-              .map((a) => `<a href="${escapeHtml(a.url)}">${escapeHtml(a.name)}</a>`)
-              .join(", ")}</div>`
-          : "";
+      const time = new Date(msg.createdTimestamp).toISOString().replace("T", " ").slice(0, 19);
+      const author = escapeHtml(msg.author?.tag || msg.author?.username || "inconnu");
+      const botBadge = msg.author?.bot ? `<span class="bot">BOT</span>` : "";
       return (
         `<div class="msg">` +
-        `<div class="meta"><span class="time">${escapeHtml(time)}</span> · ` +
-        `<span class="author">${escapeHtml(author)}</span></div>` +
-        `<div class="body">${content || "<em>(vide)</em>"}${embeds}${comps}${atts}</div>` +
+        `<div class="meta">` +
+        `<span class="author">${author}</span>${botBadge}` +
+        `<span class="time">${escapeHtml(time)} UTC</span>` +
+        `</div>` +
+        `<div class="body">${renderMessageBody(msg)}</div>` +
         `</div>`
       );
     })
     .join("\n");
 
-  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8"/>
-<title>Transcript Deal #${escapeHtml(deal.deal_code)}</title>
+<title>Deal #${escapeHtml(deal.deal_code)}</title>
 <style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e8eaed;margin:0;padding:24px;line-height:1.45}
-  h1,h2{margin:0 0 8px}
-  .card{background:#1a1d24;border:1px solid #2a2f3a;border-radius:12px;padding:20px;margin-bottom:20px}
-  .muted{color:#9aa0a6}
-  .msg{border-top:1px solid #2a2f3a;padding:12px 0}
-  .meta{font-size:12px;color:#9aa0a6;margin-bottom:4px}
-  .author{color:#8ab4f8}
-  a{color:#8ab4f8}
-  .kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;margin-top:12px}
-  .kv div:nth-child(odd){color:#9aa0a6}
+  :root{
+    --bg:#313338; --panel:#2b2d31; --elev:#1e1f22; --text:#dbdee1; --muted:#949ba4;
+    --accent:#5865f2; --success:#248046; --danger:#da373c; --secondary:#4e5058;
+    --border:#3f4147; --code:#1e1f22;
+  }
+  *{box-sizing:border-box}
+  body{font-family:gg sans,Noto Sans,Helvetica Neue,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:20px 16px 40px;line-height:1.375;font-size:15px}
+  .ticket{max-width:720px;margin:0 auto}
+  .msg{padding:10px 8px;border-radius:4px}
+  .msg:hover{background:rgba(0,0,0,.06)}
+  .meta{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+  .author{font-weight:600;color:#fff}
+  .bot{font-size:10px;font-weight:700;background:var(--accent);color:#fff;border-radius:3px;padding:1px 4px;margin-left:4px}
+  .time{font-size:11px;color:var(--muted);margin-left:auto}
+  .body{color:var(--text)}
+  .plain{white-space:pre-wrap}
+  .muted{color:var(--muted)}
+  .v2-container{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:8px 0}
+  .text-display{margin:4px 0}
+  .md-h{margin:6px 0 4px;color:#fff;font-weight:700}
+  h3.md-h{font-size:18px} h4.md-h{font-size:15px}
+  code{background:var(--code);padding:1px 4px;border-radius:3px;font-size:13px}
+  .sep{border:0;border-top:1px solid var(--border);margin:10px 0}
+  .action-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .btn{display:inline-flex;align-items:center;gap:4px;border:none;border-radius:3px;padding:6px 12px;font-size:13px;font-weight:500;color:#fff;text-decoration:none;cursor:default;user-select:none}
+  .btn.disabled{opacity:.5}
+  .btn-primary{background:var(--accent)}
+  .btn-success{background:var(--success)}
+  .btn-danger{background:var(--danger)}
+  .btn-secondary,.btn-link{background:var(--secondary)}
+  .select-wrap select{background:var(--elev);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 10px;min-width:180px}
+  .embed{background:var(--elev);border-left:3px solid var(--accent);border-radius:4px;padding:8px 12px;margin:6px 0}
+  .embed-title{font-weight:700;margin-bottom:4px}
+  .files{margin-top:6px;font-size:13px}
+  .files a{color:#00a8fc}
 </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Transcript — Deal #${escapeHtml(deal.deal_code)}</h1>
-    <p class="muted">Généré le ${escapeHtml(formatWhen(new Date().toISOString()))}</p>
-    <div class="kv">
-      <div>Produit</div><div>${escapeHtml(deal.product)}</div>
-      <div>Prix</div><div>${escapeHtml(String(deal.price))}${escapeHtml(deal.currency)}</div>
-      <div>Crypto</div><div>${escapeHtml(amount)} ${escapeHtml(deal.crypto || "LTC")}</div>
-      <div>Acheteur</div><div>${escapeHtml(deal.buyer_id || "—")}</div>
-      <div>Vendeur</div><div>${escapeHtml(deal.seller_id || "—")}</div>
-      <div>Statut</div><div>${escapeHtml(deal.status)}</div>
-      <div>TXID payout</div><div>${escapeHtml(deal.payout_id || "—")}</div>
-      <div>Note</div><div>${escapeHtml(deal.review_rating != null ? `${deal.review_rating}/5` : "—")}</div>
-      <div>Avis anonyme</div><div>${deal.review_anonymous ? "oui" : "non"}</div>
-    </div>
-  </div>
-  <div class="card">
-    <h2>Messages du salon</h2>
+  <div class="ticket">
     ${rows || "<p class='muted'>Aucun message.</p>"}
   </div>
 </body>
@@ -115,10 +271,9 @@ async function buildHtmlTranscript(channel, deal) {
 }
 
 function buildTranscriptNoticeContainer(deal, audience) {
-  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const title =
     audience === "admin"
-      ? `${e("staff")}Transcript admin — Deal #${deal.deal_code}`
+      ? `${e("staff")}Transcript — Deal #${deal.deal_code}`
       : `${e("deal")}Transcript — Deal #${deal.deal_code}`;
 
   const container = new ContainerBuilder();
@@ -128,15 +283,9 @@ function buildTranscriptNoticeContainer(deal, audience) {
   );
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("success")}Deal clôturé\n` +
-        `${e("product")}**Produit** — ${deal.product}\n` +
-        `${e("money")}**Prix** — ${deal.price}${deal.currency}\n` +
-        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
-        `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
-        `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n` +
-        `${e("clock")}**Clôturé** — ${formatWhen(deal.completed_at || new Date().toISOString())}\n\n` +
-        `${e("info")}Le transcript HTML complet est joint à ce message.\n` +
-        `${e("shield")}Conservez ce fichier comme preuve de la transaction.`
+      `${e("success")}Deal clôturé — ${formatWhen(deal.completed_at || new Date().toISOString())}\n\n` +
+        `${e("info")}Le fichier HTML joint reprend le **ticket tel quel** (messages, containers, boutons).\n` +
+        `${e("shield")}Conserve-le comme preuve.`
     )
   );
   return container;

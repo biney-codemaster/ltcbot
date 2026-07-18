@@ -10,6 +10,7 @@ const {
 const config = require("../config");
 const { formatLtcAmount, formatLtcRate } = require("./ltcPrice");
 const { statusLabel } = require("./ltcWallet");
+const { formatAuthor } = require("./userPrefs");
 
 const { e, emojis } = config;
 
@@ -51,7 +52,7 @@ function dealOverview(deal, { preferRoles = false } = {}) {
     `## ${e("product")}Détails\n` +
     `**Produit** — ${deal.product}\n` +
     `**Prix** — ${deal.price}${deal.currency}\n` +
-    `**Crypto** — ${formatCryptoPrice(deal)}`
+    `**${deal.crypto || "LTC"}** — ${formatCryptoPrice(deal)}`
   );
 }
 
@@ -77,10 +78,11 @@ function buildRoleSelectionContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("roles")}Sélection des rôles\n` +
-        `Chaque participant doit indiquer s'il est **acheteur** ou **vendeur** dans ce deal.\n\n` +
+      `## ${e("roles")}Choisissez votre rôle\n` +
+        `Chaque participant clique sur **Acheteur** ou **Vendeur**.\n\n` +
         `${e("buyer")}**Acheteur** — ${buyerLabel}\n` +
-        `${e("seller")}**Vendeur** — ${sellerLabel}`
+        `${e("seller")}**Vendeur** — ${sellerLabel}\n\n` +
+        `${e("lock")}Anonymat dans les avis / logs : \`/anonyme\``
     )
   );
 
@@ -122,11 +124,11 @@ function buildConfirmationContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("confirm")}Confirmation des rôles\n` +
+      `## ${e("confirm")}Confirmez les rôles\n` +
         `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
         `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n\n` +
-        `${e("warning")}Vérifiez attentivement que les rôles sont corrects avant de confirmer.\n` +
-        `${e("clock")}Confirmations : **${confirmCount}/2**`
+        `${e("warning")}Vérifiez bien avant de valider — c'est définitif pour la suite.\n` +
+        `${e("clock")}**${confirmCount}/2** confirmations`
     )
   );
 
@@ -161,11 +163,11 @@ function buildFinalRecapContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("success")}Rôles confirmés\n` +
+      `## ${e("success")}Rôles validés\n` +
         `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
         `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n\n` +
-        `${e("shield")}Les deux parties ont validé les termes du deal.\n` +
-        `${e("next")}**Prochaine étape** — génération de l'adresse de paiement ${deal.crypto || "LTC"}.`
+        `${e("shield")}Les deux parties sont d'accord.\n` +
+        `${e("next")}Génération de l'adresse de paiement **${deal.crypto || "LTC"}**…`
     )
   );
 
@@ -180,17 +182,18 @@ function buildPaymentContainer(deal) {
   const address = deal.pay_address || "*adresse en cours de génération*";
   const status = statusLabel(deal.payment_status || "waiting");
   const rateTxt = formatLtcRate(impliedRate(deal), deal.currency);
+  const crypto = deal.crypto || "LTC";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("payment")}Paiement escrow\n` +
-        `${e("buyer")}<@${deal.buyer_id}> doit envoyer exactement le montant ci-dessous.\n\n` +
-        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
+        `${e("buyer")}<@${deal.buyer_id}> envoie le montant exact ci-dessous.\n\n` +
+        `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
         (rateTxt ? `${e("money")}**Cours** — ${rateTxt}\n` : "") +
-        `${e("money")}**Prix deal** — ${deal.price}${deal.currency}\n` +
+        `${e("money")}**Prix** — ${deal.price}${deal.currency}\n` +
         `${e("wallet")}**Adresse** — \`${address}\`\n` +
         `${e("clock")}**Statut** — ${status}\n\n` +
-        `${e("warning")}N'envoyez que du **${deal.crypto || "LTC"}** à cette adresse.`
+        `${e("warning")}Envoie uniquement du **${crypto}** à cette adresse.`
     )
   );
 
@@ -227,11 +230,11 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("error")}Adresse de paiement indisponible\n` +
-        `Erreur : \`${errorMessage || "inconnue"}\`\n\n` +
+      `## ${e("error")}Adresse indisponible\n` +
+        `\`${errorMessage || "erreur inconnue"}\`\n\n` +
         (isMin
-          ? `${e("info")}Montant trop bas pour couvrir les frais réseau Litecoin. Augmente légèrement le prix.`
-          : `${e("next")}Réessayez — le wallet local régénère une nouvelle adresse.`)
+          ? `${e("info")}Montant trop bas pour les frais réseau Litecoin — augmente un peu le prix.`
+          : `${e("next")}Réessaie : une nouvelle adresse sera générée.`)
     )
   );
 
@@ -255,7 +258,7 @@ function buildPaymentFailedContainer(deal, reason) {
     new TextDisplayBuilder().setContent(
       `## ${e("error")}Paiement non finalisé\n` +
         `Statut : **${reason}**\n\n` +
-        `${e("next")}Vous pouvez générer une nouvelle adresse, ou contacter le staff si des fonds ont déjà été envoyés.`
+        `${e("next")}Génère une nouvelle adresse, ou contacte le staff si des fonds ont déjà été envoyés.`
     )
   );
 
@@ -288,19 +291,20 @@ function buildFundsHeldContainer(deal) {
 
   const walletLine = deal.seller_wallet
     ? `${e("wallet")}**Adresse vendeur** — \`${deal.seller_wallet}\``
-    : `${e("warning")}**Adresse vendeur** — non renseignée (obligatoire avant libération)`;
+    : `${e("warning")}**Adresse vendeur** — à renseigner (vendeur uniquement)`;
 
   const payoutErrorLine = deal.payout_error
-    ? `\n\n${e("error")}**Dernier payout échoué** — \`${deal.payout_error}\`\nVous pouvez réessayer la libération.`
+    ? `\n\n${e("error")}**Dernier payout échoué** — \`${deal.payout_error}\`\nTu peux réessayer la libération.`
     : "";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("shield")}Fonds sécurisés\n` +
-        `${e("success")}Le paiement est conservé sur une **adresse escrow dédiée**.\n\n` +
-        `${e("seller")}<@${deal.seller_id}> — livrez le produit.\n` +
-        `${e("buyer")}<@${deal.buyer_id}> — confirmez uniquement après réception.\n\n` +
-        `${walletLine}${payoutErrorLine}`
+        `${e("success")}Paiement reçu — les LTC sont en **escrow**.\n\n` +
+        `${e("seller")}<@${deal.seller_id}> — livre le produit.\n` +
+        `${e("buyer")}<@${deal.buyer_id}> — confirme uniquement après réception.\n\n` +
+        `${walletLine}${payoutErrorLine}\n\n` +
+        `${e("lock")}Anonymat avis / logs publics : commande \`/anonyme\``
     )
   );
 
@@ -345,18 +349,19 @@ function buildReleasedContainer(deal) {
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const txid = deal.payout_id || null;
   const explorerUrl = txid ? `https://litecoinspace.org/tx/${txid}` : null;
+  const crypto = deal.crypto || "LTC";
 
   let payoutText;
   if (deal.payout_error) {
     payoutText =
-      `${e("error")}Échec du payout automatique : \`${deal.payout_error}\`\n` +
-      `${e("staff")}Libérez manuellement depuis une wallet LTC avec la seed escrow vers \`${wallet}\`.`;
+      `${e("error")}Échec du payout : \`${deal.payout_error}\`\n` +
+      `${e("staff")}Libération manuelle possible vers \`${wallet}\`.`;
   } else {
     payoutText =
-      `${e("success")}Payout diffusé sur le réseau Litecoin.\n\n` +
+      `${e("success")}Payout diffusé sur Litecoin.\n\n` +
       `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n` +
       `${e("wallet")}**Adresse** — \`${wallet}\`\n` +
-      `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
+      `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
       `${e("clock")}**Statut** — ${statusLabel(payoutStatus)}\n` +
       (txid ? `${e("info")}**TXID** — \`${txid}\`\n` : "") +
       (explorerUrl ? `${e("next")}[Voir la transaction](${explorerUrl})` : "");
@@ -365,9 +370,9 @@ function buildReleasedContainer(deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("release")}Payout en cours\n` +
-        `${e("success")}L'acheteur a confirmé la réception du produit.\n\n` +
+        `${e("success")}L'acheteur a confirmé la réception.\n\n` +
         `${payoutText}\n\n` +
-        `${e("clock")}En attente de confirmation blockchain…`
+        `${e("clock")}Confirmation blockchain en cours…`
     )
   );
 
@@ -381,6 +386,7 @@ function buildPayoutConfirmedContainer(deal) {
   const wallet = deal.seller_wallet || "—";
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const txid = deal.payout_id || "—";
+  const crypto = deal.crypto || "LTC";
   const explorerUrl =
     deal.payout_id && /^[a-f0-9]{64}$/i.test(deal.payout_id)
       ? `https://litecoinspace.org/tx/${deal.payout_id}`
@@ -389,13 +395,13 @@ function buildPayoutConfirmedContainer(deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("success")}Paiement envoyé\n` +
-        `${e("release")}Les fonds ont été **confirmés** sur la blockchain Litecoin.\n\n` +
+        `${e("release")}Fonds **confirmés** sur la blockchain.\n\n` +
         `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n` +
         `${e("wallet")}**Adresse** — \`${wallet}\`\n` +
-        `${e("ltc")}**Montant** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
+        `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
         `${e("info")}**TXID** — \`${txid}\`\n` +
         (explorerUrl ? `${e("next")}[Voir la transaction](${explorerUrl})\n\n` : "\n") +
-        `${e("next")}Prochaine étape : l'acheteur laisse un avis pour clôturer le deal.`
+        `${e("next")}Dernière étape : l'acheteur laisse un avis pour clôturer.`
     )
   );
 
@@ -408,11 +414,11 @@ function buildReviewRequestContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("confirm")}Avis de l'acheteur\n` +
-        `${e("buyer")}<@${deal.buyer_id}> — le paiement vendeur est confirmé.\n\n` +
-        `Laissez une **note** et un **avis** sur cette transaction.\n` +
-        `Vous pouvez publier l'avis de façon **anonyme**.\n\n` +
-        `${e("clock")}Le salon se fermera automatiquement après l'avis (transcript envoyé en MP).`
+      `## ${e("confirm")}Ton avis\n` +
+        `${e("buyer")}<@${deal.buyer_id}> — le payout vendeur est confirmé.\n\n` +
+        `Laisse une **note** et un court avis sur le bot escrow.\n` +
+        `${e("lock")}Pour apparaître anonyme dans les avis / logs : \`/anonyme\`\n\n` +
+        `${e("clock")}Le salon se ferme après l'avis (transcript en MP).`
     )
   );
 
@@ -430,30 +436,26 @@ function buildReviewRequestContainer(deal) {
 
 function buildPublicReviewContainer(deal) {
   const container = new ContainerBuilder();
-  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const stars =
     deal.review_rating != null
       ? `${"★".repeat(deal.review_rating)}${"☆".repeat(5 - Number(deal.review_rating))}`
       : "—";
-  const authorLine = deal.review_anonymous
-    ? `${e("users")}**Auteur** — Acheteur anonyme`
-    : `${e("buyer")}**Auteur** — <@${deal.buyer_id}>`;
+  const authorLine = `${e("users")}**Auteur** — ${formatAuthor(deal.buyer_id, {
+    anonymous: Boolean(deal.review_anonymous),
+  })}`;
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`# ${e("confirm")}Nouvel avis escrow`)
+    new TextDisplayBuilder().setContent(`# ${e("confirm")}Nouvel avis`)
   );
   container.addSeparatorComponents(
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
   );
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("deal")}Deal #${deal.deal_code}\n` +
-        `${authorLine}\n` +
-        `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n` +
-        `${e("product")}**Produit** — ${deal.product}\n` +
-        `${e("money")}**Prix** — ${deal.price}${deal.currency} · \`${amount} ${deal.crypto || "LTC"}\`\n` +
-        `${e("confirm")}**Note** — ${stars} (${deal.review_rating}/5)\n\n` +
-        `**Avis**\n${deal.review_text || "*Aucun texte*"}`
+      `${authorLine}\n` +
+        `${e("escrow")}Avis pour le **bot escrow**\n` +
+        `${e("confirm")}**Note** — ${stars}\n\n` +
+        `${deal.review_text || "*Aucun texte*"}`
     )
   );
   return container;
@@ -467,8 +469,8 @@ function buildReviewPostedContainer(deal) {
     new TextDisplayBuilder().setContent(
       `## ${e("success")}Avis enregistré\n` +
         `${e("confirm")}Merci — le deal est clôturé.\n\n` +
-        `${e("info")}Un transcript HTML est envoyé au staff et en message privé aux deux parties.\n` +
-        `${e("close")}Fermeture automatique du salon…`
+        `${e("info")}Transcript HTML envoyé au staff et en MP aux deux parties.\n` +
+        `${e("close")}Fermeture du salon…`
     )
   );
   return container;
@@ -483,10 +485,10 @@ function buildDisputeContainer(deal, openedBy) {
       `## ${e("dispute")}Litige ouvert\n` +
         `Ouvert par <@${openedBy}>.\n\n` +
         `**Motif**\n${deal.dispute_reason || "*non précisé*"}\n\n` +
-        `${e("staff")}Médiation staff :\n` +
+        `${e("staff")}Actions staff :\n` +
         `• **Libérer vendeur** — payout vers l'adresse vendeur\n` +
-        `• **Rembourser acheteur** — renvoi des LTC vers l'acheteur\n` +
-        `• **Clôturer** — ferme le litige sans transfert auto`
+        `• **Rembourser acheteur** — renvoi des LTC\n` +
+        `• **Clôturer** — ferme sans transfert auto`
     )
   );
 
@@ -534,7 +536,7 @@ function buildCloseTicketContainer(deal, cancelledBy) {
     new TextDisplayBuilder().setContent(
       `## ${e("deal")}Deal #${deal.deal_code}\n` +
         `Annulé par <@${cancelledBy}>.\n\n` +
-        `${e("staff")}Un membre du staff doit fermer ce salon pour finaliser l'annulation.`
+        `${e("staff")}Un membre du staff doit fermer ce salon.`
     )
   );
 

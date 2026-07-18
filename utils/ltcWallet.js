@@ -141,18 +141,95 @@ function ensureWalletTables() {
   }
 }
 
-function allocateWalletIndex() {
+const INDEX_FILE = path.join(__dirname, "..", "wallet.next_index");
+const MAX_USED_SKIP = 200;
+
+function readIndexFile() {
+  try {
+    if (!fs.existsSync(INDEX_FILE)) return 0;
+    const n = Number(fs.readFileSync(INDEX_FILE, "utf8").trim());
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeIndexFile(index) {
+  try {
+    fs.writeFileSync(INDEX_FILE, `${Math.max(0, Math.floor(index))}\n`, { mode: 0o600 });
+  } catch (err) {
+    console.warn("wallet.next_index:", err.message);
+  }
+}
+
+function peekNextWalletIndex() {
   ensureWalletTables();
   const row = db.prepare(`SELECT value FROM wallet_meta WHERE key = 'next_index'`).get();
-  let next = row ? Number(row.value) : 0;
-  if (!Number.isFinite(next) || next < 0) next = 0;
+  const fromMeta = Number(row?.value);
+  const maxDeal = db
+    .prepare(`SELECT MAX(wallet_index) AS m FROM deals WHERE wallet_index IS NOT NULL`)
+    .get();
+  const fromDeals = Number(maxDeal?.m);
+  const candidates = [
+    Number.isFinite(fromMeta) ? fromMeta : 0,
+    Number.isFinite(fromDeals) ? fromDeals + 1 : 0,
+    readIndexFile(),
+  ];
+  return Math.max(0, ...candidates);
+}
 
+function commitWalletIndex(nextAfter) {
+  ensureWalletTables();
+  const v = String(Math.max(0, Math.floor(nextAfter)));
   db.prepare(
     `INSERT INTO wallet_meta (key, value) VALUES ('next_index', @v)
      ON CONFLICT(key) DO UPDATE SET value = @v`
-  ).run({ v: String(next + 1) });
+  ).run({ v });
+  writeIndexFile(nextAfter);
+}
 
+/** Réserve un index HD (persisté DB + fichier) — jamais réutilisé après redémarrage. */
+function allocateWalletIndex() {
+  const next = peekNextWalletIndex();
+  commitWalletIndex(next + 1);
   return next;
+}
+
+function addressHasHistory(info) {
+  const chain = info?.chain_stats || {};
+  const mempool = info?.mempool_stats || {};
+  const counts =
+    Number(chain.funded_txo_count || 0) +
+    Number(chain.spent_txo_count || 0) +
+    Number(mempool.funded_txo_count || 0) +
+    Number(mempool.spent_txo_count || 0);
+  const sums =
+    Number(chain.funded_txo_sum || 0) +
+    Number(chain.spent_txo_sum || 0) +
+    Number(mempool.funded_txo_sum || 0) +
+    Number(mempool.spent_txo_sum || 0);
+  return counts > 0 || sums > 0;
+}
+
+/** Alloue une adresse jamais vue on-chain (skip si déjà utilisée). */
+async function allocateFreshAddress() {
+  for (let attempt = 0; attempt < MAX_USED_SKIP; attempt += 1) {
+    const index = allocateWalletIndex();
+    const { address } = addressFromIndex(index);
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const info = await explorerGet(`/address/${encodeURIComponent(address)}`);
+      if (addressHasHistory(info)) {
+        console.warn(`[wallet] skip adresse déjà utilisée index=${index} ${address}`);
+        continue;
+      }
+    } catch (err) {
+      // Explorer down : on garde l'adresse (index déjà consommé, pas de réutilisation).
+      console.warn(`[wallet] check historique KO index=${index}: ${err.message}`);
+    }
+    return { index, address };
+  }
+  throw new Error("Impossible de trouver une adresse LTC jamais utilisée.");
 }
 
 function parsePaymentId(paymentId) {
@@ -287,8 +364,7 @@ async function assertAboveMinAmount() {
  */
 async function createLtcPayment(deal) {
   ensureWalletTables();
-  const index = allocateWalletIndex();
-  const { address } = addressFromIndex(index);
+  const { index, address } = await allocateFreshAddress();
 
   // Toujours recalculer au cours live (pas le montant figé à la création du deal)
   let payAmount = null;

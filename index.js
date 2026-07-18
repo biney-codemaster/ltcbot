@@ -15,7 +15,9 @@ const {
 } = require("discord.js");
 const config = require("./config");
 const setupCommand = require("./commands/setup");
+const anonymeCommand = require("./commands/anonyme");
 const { handleDealModal } = require("./interactions/dealModal");
+const { ensurePrefsTable } = require("./utils/userPrefs");
 const {
   handleRoleButton,
   handleConfirmButton,
@@ -55,7 +57,8 @@ const client = new Client({
   ],
 });
 
-const commands = [setupCommand.data.toJSON()];
+ensurePrefsTable();
+const commands = [setupCommand.data.toJSON(), anonymeCommand.data.toJSON()];
 
 async function registerCommands() {
   const rest = new REST().setToken(config.token);
@@ -159,13 +162,17 @@ client.once(Events.ClientReady, async () => {
   }
   await probeLogChannels(client);
   startPaymentPoller(client);
-  console.log("Polling wallet LTC démarré (30s).");
+  console.log("Polling wallet LTC démarré (5s).");
 });
 
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isChatInputCommand() && interaction.commandName === "setup") {
       await setupCommand.execute(interaction);
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === "anonyme") {
+      await anonymeCommand.execute(interaction);
     }
 
     if (interaction.isButton() && interaction.customId === "escrow_start_deal") {

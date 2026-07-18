@@ -3,5 +3,6 @@ node_modules/
 escrow.db
 escrow.db-*
 wallet.mnemonic
+wallet.next_index
 *.log
 .DS_Store

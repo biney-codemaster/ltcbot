@@ -7,6 +7,7 @@ const {
 } = require("discord.js");
 const config = require("../config");
 const { formatLtcAmount } = require("./ltcPrice");
+const { isUserAnonymous, formatAuthor } = require("./userPrefs");
 
 const { e } = config;
 
@@ -131,13 +132,22 @@ async function logAdmin(client, title, lines) {
   );
 }
 
+function formatFiatParen(deal) {
+  const price = deal.price != null ? String(deal.price) : "—";
+  if (deal.currency === "$" || deal.currency === "USD") return `($${price})`;
+  return `(${price}€)`;
+}
+
 async function logPublicCompleted(client, deal) {
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const crypto = deal.crypto || "LTC";
   const when = formatWhen(deal.completed_at || deal.review_at || deal.updated_at);
-  const rating =
-    deal.review_rating != null
-      ? `${"★".repeat(deal.review_rating)}${"☆".repeat(5 - deal.review_rating)} (${deal.review_rating}/5)`
-      : "—";
+
+  const buyerAnon =
+    deal.review_anonymous != null
+      ? Boolean(deal.review_anonymous)
+      : isUserAnonymous(deal.buyer_id);
+  const sellerAnon = isUserAnonymous(deal.seller_id);
 
   const container = new ContainerBuilder();
   container.addTextDisplayComponents(
@@ -148,16 +158,11 @@ async function logPublicCompleted(client, deal) {
   );
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("deal")}#${deal.deal_code}\n` +
-        `${e("product")}**Produit** — ${deal.product}\n` +
-        `${e("money")}**Prix** — ${deal.price}${deal.currency}\n` +
-        `${e("ltc")}**Crypto** — \`${amount} ${deal.crypto || "LTC"}\`\n` +
-        `${e("clock")}**Date** — ${when}\n` +
-        `${e("confirm")}**Note** — ${rating}\n` +
-        (deal.review_anonymous
-          ? `${e("users")}**Parties** — anonymisées`
-          : `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
-            `${e("seller")}**Vendeur** — <@${deal.seller_id}>`)
+      `## ${e("ltc")}${crypto}\n` +
+        `\`${amount} ${crypto}\` ${formatFiatParen(deal)}\n\n` +
+        `${e("buyer")}**Acheteur** — ${formatAuthor(deal.buyer_id, { anonymous: buyerAnon })}\n` +
+        `${e("seller")}**Vendeur** — ${formatAuthor(deal.seller_id, { anonymous: sellerAnon })}\n\n` +
+        `${e("clock")}${when}`
     )
   );
 

@@ -27,9 +27,9 @@ async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
           console.warn("Avis V2 KO, fallback texte:", err.message);
           await reviewsCh.send({
             content:
-              `**Avis deal #${deal.deal_code}** — ${deal.review_rating}/5\n` +
-              `${deal.review_anonymous ? "Anonyme" : `<@${deal.buyer_id}>`} → <@${deal.seller_id}>\n` +
-              `${deal.product} · ${deal.price}${deal.currency}\n\n` +
+              `**Nouvel avis** — ${"★".repeat(deal.review_rating)}${"☆".repeat(5 - deal.review_rating)}\n` +
+              `Auteur — ${deal.review_anonymous ? "Anonyme" : `<@${deal.buyer_id}>`}\n` +
+              `Avis pour le bot escrow\n\n` +
               `${deal.review_text}`,
           });
         }

@@ -38,7 +38,8 @@ function buildSetupContainer() {
         `1. Création du deal et salon privé\n` +
         `2. Choix des rôles (acheteur / vendeur)\n` +
         `3. Confirmation mutuelle des termes\n` +
-        `4. Paiement LTC puis libération vers le vendeur`
+        `4. Paiement LTC puis libération vers le vendeur\n\n` +
+        `${e("lock")}**Anonymat** — utilise \`/anonyme\` pour apparaître anonyme (ou non) dans les avis et logs publics.`
     )
   );
 
@@ -49,7 +50,7 @@ function buildSetupContainer() {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("deal")}Nouveau deal\n` +
-        `Cliquez ci-dessous pour ouvrir un deal sécurisé.`
+        `Clique ci-dessous pour ouvrir un deal sécurisé.`
     )
   );
 
