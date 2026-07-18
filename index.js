@@ -183,6 +183,11 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.showModal(buildDealModal());
     }
 
+    // Bouton décoratif du panel — accuse réception sans message / erreur
+    if (interaction.isButton() && interaction.customId === "escrow_deco") {
+      await interaction.deferUpdate();
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith("deal_role:")) {
       const [, role, dealCode] = interaction.customId.split(":");
       await handleRoleButton(interaction, role, dealCode);

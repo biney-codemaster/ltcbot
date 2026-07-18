@@ -26,7 +26,7 @@ const rawEmojis = {
   clock: null, // en attente
 
   // Escrow / deal
-  escrow: null, // panneau principal escrow
+  escrow: null, // panneau principal + bouton déco (mets "<:nom:id>" pour l'afficher)
   deal: null, // deal / transaction
   shield: null, // confiance / protection des fonds
   roles: null, // sélection des rôles

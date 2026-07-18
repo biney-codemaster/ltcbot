@@ -54,16 +54,27 @@ function buildSetupContainer() {
     )
   );
 
-  const button = new ButtonBuilder()
+  const startButton = new ButtonBuilder()
     .setCustomId("escrow_start_deal")
     .setLabel("Start a deal")
     .setStyle(ButtonStyle.Secondary);
 
   if (emojis.deal) {
-    button.setEmoji(emojis.deal);
+    startButton.setEmoji(emojis.deal);
   }
 
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(button));
+  const row = new ActionRowBuilder().addComponents(startButton);
+
+  // Bouton décoratif (emoji escrow uniquement) — clic silencieux
+  if (emojis.escrow) {
+    const decoButton = new ButtonBuilder()
+      .setCustomId("escrow_deco")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji(emojis.escrow);
+    row.addComponents(decoButton);
+  }
+
+  container.addActionRowComponents(row);
 
   return container;
 }
