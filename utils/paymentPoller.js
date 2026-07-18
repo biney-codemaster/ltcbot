@@ -280,20 +280,7 @@ async function publishFundsHeld(deal) {
     const channel = await client.channels.fetch(deal.channel_id);
     if (!channel?.isTextBased()) return;
 
-    if (deal.payment_message_id) {
-      try {
-        const msg = await channel.messages.fetch(deal.payment_message_id);
-        await msg.edit({
-          components: [
-            buildPaymentContainer({ ...deal, payment_status: deal.payment_status || "paid" }),
-          ],
-          flags: MessageFlags.IsComponentsV2,
-        });
-      } catch {
-        // message peut avoir été supprimé
-      }
-    }
-
+    // Ne pas modifier le container d'adresse : envoyer un nouveau message
     const fundsMsg = await channel.send({
       components: [buildFundsHeldContainer(deal)],
       flags: MessageFlags.IsComponentsV2,
