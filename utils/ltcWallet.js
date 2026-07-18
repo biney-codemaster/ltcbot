@@ -385,7 +385,7 @@ function buildSplitTransaction(
     throw new Error("Split payout incohérent (somme ≠ total)");
   }
   if (sellerValue <= DUST_LITOSHIS) {
-    throw new Error("Montant vendeur trop bas (dust)");
+    throw new Error("Customer amount too low (dust)");
   }
   if (ownerValue <= DUST_LITOSHIS) {
     throw new Error("Reste owner trop bas (dust)");
