@@ -112,6 +112,18 @@ function buildDealModal() {
         .setPlaceholder("ex: 25.50")
     );
 
+  const eurOption = new StringSelectMenuOptionBuilder()
+    .setLabel("Euro (€)")
+    .setValue("EUR")
+    .setDescription("Prix en euros");
+  if (config.emojis.eur) eurOption.setEmoji(config.emojis.eur);
+
+  const usdOption = new StringSelectMenuOptionBuilder()
+    .setLabel("Dollar ($)")
+    .setValue("USD")
+    .setDescription("Prix en dollars");
+  if (config.emojis.usd) usdOption.setEmoji(config.emojis.usd);
+
   const currencyLabel = new LabelBuilder()
     .setLabel("Devise")
     .setStringSelectMenuComponent(
@@ -119,17 +131,14 @@ function buildDealModal() {
         .setCustomId("currency")
         .setPlaceholder("Choisir une devise")
         .setRequired(true)
-        .addOptions(
-          new StringSelectMenuOptionBuilder()
-            .setLabel("Euro (€)")
-            .setValue("EUR")
-            .setDescription("Prix en euros"),
-          new StringSelectMenuOptionBuilder()
-            .setLabel("Dollar ($)")
-            .setValue("USD")
-            .setDescription("Prix en dollars")
-        )
+        .addOptions(eurOption, usdOption)
     );
+
+  const ltcOption = new StringSelectMenuOptionBuilder()
+    .setLabel("Litecoin (LTC)")
+    .setValue("LTC")
+    .setDescription("Paiement en Litecoin");
+  if (config.emojis.ltc) ltcOption.setEmoji(config.emojis.ltc);
 
   const cryptoLabel = new LabelBuilder()
     .setLabel("Crypto du deal")
@@ -138,12 +147,7 @@ function buildDealModal() {
         .setCustomId("crypto")
         .setPlaceholder("Choisir une crypto")
         .setRequired(true)
-        .addOptions(
-          new StringSelectMenuOptionBuilder()
-            .setLabel("Litecoin (LTC)")
-            .setValue("LTC")
-            .setDescription("Paiement en Litecoin")
-        )
+        .addOptions(ltcOption)
     );
 
   modal.addLabelComponents(partnerLabel, productLabel, priceLabel, currencyLabel, cryptoLabel);

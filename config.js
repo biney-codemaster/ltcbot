@@ -38,7 +38,9 @@ const rawEmojis = {
   // Paiement
   money: null, // montant fiat
   crypto: null, // crypto générique
-  ltc: null, // Litecoin
+  usd: "<:emoji_21:1527831343273345024>", // dollar $
+  eur: "<:emoji_22:1527831361107529848>", // euro €
+  ltc: "<:emojigg_ltc:1527807573493809203>", // Litecoin
   wallet: null, // adresse / portefeuille
   payment: null, // paiement en cours
   release: null, // libération des fonds
