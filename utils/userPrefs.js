@@ -34,7 +34,7 @@ function setUserAnonymous(userId, anonymous) {
 
 function formatAuthor(userId, { anonymous = null } = {}) {
   const anon = anonymous == null ? isUserAnonymous(userId) : Boolean(anonymous);
-  if (anon) return "Anonyme";
+  if (anon) return "Anonymous";
   return `<@${userId}>`;
 }
 

@@ -5,17 +5,17 @@ const { isUserAnonymous, setUserAnonymous } = require("../utils/userPrefs");
 const { e } = config;
 
 const data = new SlashCommandBuilder()
-  .setName("anonyme")
-  .setDescription("Active ou désactive l'anonymat dans les avis et logs publics")
+  .setName("anonymous")
+  .setDescription("Enable or disable anonymity in reviews and public logs")
   .addStringOption((opt) =>
     opt
       .setName("mode")
-      .setDescription("Choisir le mode")
+      .setDescription("Choose a mode")
       .setRequired(true)
       .addChoices(
-        { name: "Activer", value: "on" },
-        { name: "Désactiver", value: "off" },
-        { name: "Voir mon statut", value: "status" }
+        { name: "Enable", value: "on" },
+        { name: "Disable", value: "off" },
+        { name: "View my status", value: "status" }
       )
   );
 
@@ -27,8 +27,8 @@ async function execute(interaction) {
     const anon = isUserAnonymous(userId);
     return interaction.reply({
       content: anon
-        ? `${e("lock")}Tu es **anonyme** — ton profil n'apparaît pas dans les avis / logs publics.`
-        : `${e("users")}Tu es **visible** — ton profil apparaît dans les avis / logs publics.`,
+        ? `${e("lock")}You are **anonymous** — your profile is hidden in reviews / public logs.`
+        : `${e("users")}You are **visible** — your profile appears in reviews / public logs.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -38,8 +38,8 @@ async function execute(interaction) {
 
   return interaction.reply({
     content: anon
-      ? `${e("lock")}Anonymat **activé**. Tes avis et logs publics n'afficheront plus ton profil.`
-      : `${e("users")}Anonymat **désactivé**. Ton profil réapparaîtra dans les avis et logs publics.`,
+      ? `${e("lock")}Anonymity **enabled**. Your profile will be hidden in reviews and public logs.`
+      : `${e("users")}Anonymity **disabled**. Your profile will show again in reviews and public logs.`,
     flags: MessageFlags.Ephemeral,
   });
 }

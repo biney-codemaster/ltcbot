@@ -15,6 +15,10 @@ const { dealCodeTag, formatCryptoAmountLine, discordTimestamp } = require("./dea
 
 const { e, emojis } = config;
 
+/** UI labels: buyer_id → Seller, seller_id → Customer */
+const ROLE_PAYER = "Seller";
+const ROLE_RECEIVER = "Customer";
+
 function applyEmoji(button, key) {
   if (emojis[key]) button.setEmoji(emojis[key]);
   return button;
@@ -35,7 +39,7 @@ function formatTxBlock(txid) {
   const id = String(txid || "").trim();
   if (!id) return null;
   if (/^[a-f0-9]{64}$/i.test(id)) {
-    return `${e("info")}**TXID** — \`${id}\` · [Lien](${getExplorerTxUrl(id)})`;
+    return `${e("info")}**TXID** — \`${id}\` · [Link](${getExplorerTxUrl(id)})`;
   }
   return `${e("info")}**TXID** — \`${id}\``;
 }
@@ -46,34 +50,34 @@ function buildRoleSelectionContainer(deal) {
 
   const crypto = deal.crypto || "LTC";
   const amount = formatLtcAmount(Number(deal.pay_amount));
-  const buyerLabel = deal.buyer_id ? `<@${deal.buyer_id}>` : "*en attente*";
-  const sellerLabel = deal.seller_id ? `<@${deal.seller_id}>` : "*en attente*";
+  const sellerLabel = deal.buyer_id ? `<@${deal.buyer_id}>` : "*pending*";
+  const customerLabel = deal.seller_id ? `<@${deal.seller_id}>` : "*pending*";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("product")}**Produit** — ${deal.product}\n` +
-        `${e("money")}**Prix** — ${deal.price}${deal.currency}` +
+      `${e("product")}**Product** — ${deal.product}\n` +
+        `${e("money")}**Price** — ${deal.price}${deal.currency}` +
         (amount ? `\n${e("ltc")}**${crypto}** — \`${amount} ${crypto}\`` : "") +
-        `\n\n## ${e("roles")}Choisissez votre rôle\n` +
-        `Chaque participant clique sur **Acheteur** ou **Vendeur**.\n\n` +
-        `${e("buyer")}**Acheteur** — ${buyerLabel}\n` +
-        `${e("seller")}**Vendeur** — ${sellerLabel}\n\n` +
-        `${e("lock")}Anonymat avis / logs : \`/anonyme\``
+        `\n\n## ${e("roles")}Choose your role\n` +
+        `Each participant clicks **${ROLE_PAYER}** or **${ROLE_RECEIVER}**.\n\n` +
+        `${e("buyer")}**${ROLE_PAYER}** — ${sellerLabel}\n` +
+        `${e("seller")}**${ROLE_RECEIVER}** — ${customerLabel}\n\n` +
+        `${e("lock")}Anonymity in reviews / public logs: \`/anonymous\``
     )
-  );
-
-  const buyerButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_role:BUYER:${deal.deal_code}`)
-      .setLabel("Acheteur")
-      .setStyle(deal.buyer_id ? ButtonStyle.Success : ButtonStyle.Secondary),
-    "buyer"
   );
 
   const sellerButton = applyEmoji(
     new ButtonBuilder()
+      .setCustomId(`deal_role:BUYER:${deal.deal_code}`)
+      .setLabel(ROLE_PAYER)
+      .setStyle(deal.buyer_id ? ButtonStyle.Success : ButtonStyle.Secondary),
+    "buyer"
+  );
+
+  const customerButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_role:SELLER:${deal.deal_code}`)
-      .setLabel("Vendeur")
+      .setLabel(ROLE_RECEIVER)
       .setStyle(deal.seller_id ? ButtonStyle.Success : ButtonStyle.Secondary),
     "seller"
   );
@@ -81,13 +85,13 @@ function buildRoleSelectionContainer(deal) {
   const cancelButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_cancel:${deal.deal_code}`)
-      .setLabel("Annuler")
+      .setLabel("Cancel")
       .setStyle(ButtonStyle.Danger),
     "cancel"
   );
 
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(buyerButton, sellerButton, cancelButton)
+    new ActionRowBuilder().addComponents(sellerButton, customerButton, cancelButton)
   );
 
   return container;
@@ -99,10 +103,10 @@ function buildConfirmationContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("confirm")}Confirmez les rôles\n` +
-        `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
-        `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n\n` +
-        `${e("warning")}Vérifiez bien avant de valider.\n` +
+      `## ${e("confirm")}Confirm roles\n` +
+        `${e("buyer")}**${ROLE_PAYER}** — <@${deal.buyer_id}>\n` +
+        `${e("seller")}**${ROLE_RECEIVER}** — <@${deal.seller_id}>\n\n` +
+        `${e("warning")}Double-check before confirming.\n` +
         `${e("clock")}**${confirmCount}/2** confirmations`
     )
   );
@@ -110,7 +114,7 @@ function buildConfirmationContainer(deal) {
   const confirmButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_confirm:${deal.deal_code}`)
-      .setLabel(`Confirmer (${confirmCount}/2)`)
+      .setLabel(`Confirm (${confirmCount}/2)`)
       .setStyle(confirmCount === 2 ? ButtonStyle.Success : ButtonStyle.Primary)
       .setDisabled(confirmCount === 2),
     "confirm"
@@ -119,7 +123,7 @@ function buildConfirmationContainer(deal) {
   const wrongRolesButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_wrong_roles:${deal.deal_code}`)
-      .setLabel("Rôles incorrects")
+      .setLabel("Wrong roles")
       .setStyle(ButtonStyle.Danger)
       .setDisabled(confirmCount === 2),
     "warning"
@@ -137,10 +141,10 @@ function buildFinalRecapContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("success")}Rôles validés\n` +
-        `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
-        `${e("seller")}**Vendeur** — <@${deal.seller_id}>\n\n` +
-        `${e("next")}Génération de l'adresse de paiement…`
+      `## ${e("success")}Roles confirmed\n` +
+        `${e("buyer")}**${ROLE_PAYER}** — <@${deal.buyer_id}>\n` +
+        `${e("seller")}**${ROLE_RECEIVER}** — <@${deal.seller_id}>\n\n` +
+        `${e("next")}Generating payment address…`
     )
   );
 
@@ -150,21 +154,22 @@ function buildFinalRecapContainer(deal) {
 function buildPaymentContainer(deal) {
   const container = new ContainerBuilder();
 
-  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
-  const address = deal.pay_address || "*adresse en cours de génération*";
+  const amount =
+    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
+  const address = deal.pay_address || "*generating address*";
   const status = statusLabel(deal.payment_status || "waiting");
   const crypto = deal.crypto || "LTC";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("payment")}Paiement escrow\n` +
-        `${e("buyer")}<@${deal.buyer_id}> envoie **exactement** le montant ci-dessous.\n\n` +
-        `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
-        `${e("money")}**Prix** — ${deal.price}${deal.currency}\n` +
-        `${e("wallet")}**Adresse** — \`${address}\`\n` +
-        `${e("clock")}**Statut** — ${status}\n\n` +
-        `${e("warning")}Envoie uniquement du **${crypto}** à cette adresse.\n` +
-        `${e("warning")}Si le montant n'est **pas exact**, **aucun remboursement** ne sera effectué.`
+      `## ${e("payment")}Escrow payment\n` +
+        `${e("buyer")}<@${deal.buyer_id}> must send **exactly** the amount below.\n\n` +
+        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+        `${e("money")}**Price** — ${deal.price}${deal.currency}\n` +
+        `${e("wallet")}**Address** — \`${address}\`\n` +
+        `${e("clock")}**Status** — ${status}\n\n` +
+        `${e("warning")}Send **${crypto}** only to this address.\n` +
+        `${e("warning")}If the amount is **not exact**, **no refund** will be issued.`
     )
   );
 
@@ -173,7 +178,7 @@ function buildPaymentContainer(deal) {
       applyEmoji(
         new ButtonBuilder()
           .setCustomId(`deal_dispute:${deal.deal_code}`)
-          .setLabel("Ouvrir un litige")
+          .setLabel("Open a dispute")
           .setStyle(ButtonStyle.Danger),
         "dispute"
       )
@@ -186,24 +191,24 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   const container = new ContainerBuilder();
 
   const isMin =
-    /montant trop|too small|minimum|frais réseau|DUST|solde trop bas/i.test(
+    /montant trop|too small|minimum|frais réseau|network fee|DUST|solde trop bas|balance too low/i.test(
       String(errorMessage || "")
     );
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("error")}Adresse indisponible\n` +
-        `\`${errorMessage || "erreur inconnue"}\`\n\n` +
+      `## ${e("error")}Address unavailable\n` +
+        `\`${errorMessage || "unknown error"}\`\n\n` +
         (isMin
-          ? `${e("info")}Montant trop bas pour les frais réseau Litecoin — augmente un peu le prix.`
-          : `${e("next")}Réessaie : une nouvelle adresse sera générée.`)
+          ? `${e("info")}Amount too low for Litecoin network fees — raise the price slightly.`
+          : `${e("next")}Try again: a new address will be generated.`)
     )
   );
 
   const retryButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_regen_payment:${deal.deal_code}`)
-      .setLabel("Régénérer l'adresse")
+      .setLabel("Regenerate address")
       .setStyle(ButtonStyle.Primary),
     "payment"
   );
@@ -212,22 +217,41 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   return container;
 }
 
-/** Après un montant incorrect — nouvelle adresse, sans détail interne. */
-function buildPaymentRetryContainer(deal) {
+function buildPaymentDetectedContainer(deal) {
   const container = new ContainerBuilder();
-  const amount = formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
-  const address = deal.pay_address || "*adresse en cours*";
+  const amount =
+    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
   const crypto = deal.crypto || "LTC";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("warning")}Montant incorrect\n` +
-        `Le montant reçu ne correspond pas au montant exact demandé.\n` +
-        `${e("warning")}**Aucun remboursement** ne sera effectué.\n\n` +
-        `${e("buyer")}<@${deal.buyer_id}> — renvoie **exactement** :\n\n` +
-        `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
-        `${e("wallet")}**Adresse** — \`${address}\`\n\n` +
-        `${e("warning")}Envoie uniquement du **${crypto}** à cette adresse.`
+      `## ${e("clock")}Payment detected\n` +
+        `${e("success")}A payment was detected on the escrow address.\n\n` +
+        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+        `${e("clock")}Waiting for **blockchain confirmation**…\n\n` +
+        `${e("info")}The next message will appear once the payment is confirmed.`
+    )
+  );
+
+  return container;
+}
+
+function buildPaymentRetryContainer(deal) {
+  const container = new ContainerBuilder();
+  const amount =
+    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
+  const address = deal.pay_address || "*address pending*";
+  const crypto = deal.crypto || "LTC";
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("warning")}Incorrect amount\n` +
+        `The amount received does not match the exact amount required.\n` +
+        `${e("warning")}**No refund** will be issued.\n\n` +
+        `${e("buyer")}<@${deal.buyer_id}> — send **exactly**:\n\n` +
+        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+        `${e("wallet")}**Address** — \`${address}\`\n\n` +
+        `${e("warning")}Send **${crypto}** only to this address.`
     )
   );
 
@@ -236,7 +260,7 @@ function buildPaymentRetryContainer(deal) {
       applyEmoji(
         new ButtonBuilder()
           .setCustomId(`deal_dispute:${deal.deal_code}`)
-          .setLabel("Ouvrir un litige")
+          .setLabel("Open a dispute")
           .setStyle(ButtonStyle.Danger),
         "dispute"
       )
@@ -250,16 +274,16 @@ function buildPaymentFailedContainer(deal, reason) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("error")}Paiement non finalisé\n` +
-        `Statut : **${reason}**\n\n` +
-        `${e("next")}Génère une nouvelle adresse, ou contacte le staff si des fonds ont déjà été envoyés.`
+      `## ${e("error")}Payment not completed\n` +
+        `Status: **${reason}**\n\n` +
+        `${e("next")}Generate a new address, or contact staff if funds were already sent.`
     )
   );
 
   const retryButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_regen_payment:${deal.deal_code}`)
-      .setLabel("Nouvelle adresse")
+      .setLabel("New address")
       .setStyle(ButtonStyle.Primary),
     "payment"
   );
@@ -267,7 +291,7 @@ function buildPaymentFailedContainer(deal, reason) {
   const disputeButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_dispute:${deal.deal_code}`)
-      .setLabel("Ouvrir un litige")
+      .setLabel("Open a dispute")
       .setStyle(ButtonStyle.Danger),
     "dispute"
   );
@@ -283,28 +307,28 @@ function buildFundsHeldContainer(deal) {
   const container = new ContainerBuilder();
 
   const walletLine = deal.seller_wallet
-    ? `${e("wallet")}**Adresse vendeur** — \`${deal.seller_wallet}\``
-    : `${e("warning")}**Adresse vendeur** — à renseigner (**vendeur uniquement**)`;
+    ? `${e("wallet")}**Customer address** — \`${deal.seller_wallet}\``
+    : `${e("warning")}**Customer address** — required (**customer only**)`;
 
   const payoutErrorLine = deal.payout_error
-    ? `\n\n${e("error")}**Dernier payout échoué** — \`${deal.payout_error}\``
+    ? `\n\n${e("error")}**Last payout failed** — \`${deal.payout_error}\``
     : "";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("success")}Paiement confirmé\n` +
-        `${e("shield")}Fonds reçus et sécurisés en **escrow**.\n\n` +
-        `${e("seller")}<@${deal.seller_id}> — livre le produit.\n` +
-        `${e("buyer")}<@${deal.buyer_id}> — confirme uniquement après réception.\n\n` +
+      `## ${e("success")}Payment confirmed\n` +
+        `${e("shield")}Funds received and secured in **escrow**.\n\n` +
+        `${e("seller")}<@${deal.seller_id}> — deliver the product.\n` +
+        `${e("buyer")}<@${deal.buyer_id}> — confirm only after you receive it.\n\n` +
         `${walletLine}${payoutErrorLine}\n\n` +
-        `${e("lock")}Anonymat : \`/anonyme\``
+        `${e("lock")}Anonymity: \`/anonymous\``
     )
   );
 
   const walletButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
-      .setLabel(deal.seller_wallet ? "Modifier adresse (vendeur)" : "Adresse vendeur")
+      .setLabel(deal.seller_wallet ? "Update address (customer)" : "Customer address")
       .setStyle(ButtonStyle.Secondary),
     "wallet"
   );
@@ -312,7 +336,7 @@ function buildFundsHeldContainer(deal) {
   const releaseButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_release:${deal.deal_code}`)
-      .setLabel(deal.payout_error ? "Réessayer la libération" : "Produit reçu — libérer")
+      .setLabel(deal.payout_error ? "Retry release" : "Product received — release")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!deal.seller_wallet),
     "release"
@@ -321,7 +345,7 @@ function buildFundsHeldContainer(deal) {
   const disputeButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_dispute:${deal.deal_code}`)
-      .setLabel("Ouvrir un litige")
+      .setLabel("Open a dispute")
       .setStyle(ButtonStyle.Danger),
     "dispute"
   );
@@ -337,27 +361,28 @@ function buildReleasedContainer(deal) {
   const container = new ContainerBuilder();
 
   const wallet = deal.seller_wallet || "—";
-  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const amount =
+    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
   const crypto = deal.crypto || "LTC";
   const txBlock = formatTxBlock(deal.payout_id);
 
   let body;
   if (deal.payout_error) {
     body =
-      `${e("error")}Échec du payout : \`${deal.payout_error}\`\n` +
-      `${e("staff")}Libération manuelle possible vers \`${wallet}\`.`;
+      `${e("error")}Payout failed: \`${deal.payout_error}\`\n` +
+      `${e("staff")}Manual release possible to \`${wallet}\`.`;
   } else {
     body =
-      `${e("success")}Payout diffusé sur Litecoin.\n\n` +
-      `${e("wallet")}**Adresse** — \`${wallet}\`\n` +
-      `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
-      `${e("clock")}**Statut** — ${statusLabel(deal.payout_status || "processing")}\n` +
+      `${e("success")}Payout broadcast on Litecoin.\n\n` +
+      `${e("wallet")}**Address** — \`${wallet}\`\n` +
+      `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+      `${e("clock")}**Status** — ${statusLabel(deal.payout_status || "processing")}\n` +
       (txBlock ? `${txBlock}\n` : "") +
-      `\n${e("clock")}Confirmation blockchain…`;
+      `\n${e("clock")}Awaiting blockchain confirmation…`;
   }
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`## ${e("release")}Payout en cours\n${body}`)
+    new TextDisplayBuilder().setContent(`## ${e("release")}Payout in progress\n${body}`)
   );
 
   return container;
@@ -367,18 +392,19 @@ function buildPayoutConfirmedContainer(deal) {
   const container = new ContainerBuilder();
 
   const wallet = deal.seller_wallet || "—";
-  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const amount =
+    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
   const crypto = deal.crypto || "LTC";
   const txBlock = formatTxBlock(deal.payout_id);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("success")}Paiement envoyé\n` +
-        `${e("release")}Fonds **confirmés** sur la blockchain.\n\n` +
-        `${e("wallet")}**Adresse** — \`${wallet}\`\n` +
-        `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
+      `## ${e("success")}Payout sent\n` +
+        `${e("release")}Funds **confirmed** on the blockchain.\n\n` +
+        `${e("wallet")}**Address** — \`${wallet}\`\n` +
+        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
         (txBlock ? `${txBlock}\n\n` : "\n") +
-        `${e("next")}L'acheteur laisse un avis pour clôturer.`
+        `${e("next")}The seller leaves a review to close the deal.`
     )
   );
 
@@ -390,17 +416,17 @@ function buildReviewRequestContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("confirm")}Ton avis\n` +
-        `${e("buyer")}<@${deal.buyer_id}> — laisse une note et un avis.\n\n` +
-        `${e("lock")}Anonymat : \`/anonyme\`\n` +
-        `${e("clock")}Le salon se ferme après l'avis.`
+      `## ${e("confirm")}Your review\n` +
+        `${e("buyer")}<@${deal.buyer_id}> — leave a rating and a short review.\n\n` +
+        `${e("lock")}Anonymity: \`/anonymous\`\n` +
+        `${e("clock")}This channel closes after the review.`
     )
   );
 
   const reviewButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_review:${deal.deal_code}`)
-      .setLabel("Laisser un avis")
+      .setLabel("Leave a review")
       .setStyle(ButtonStyle.Primary),
     "confirm"
   );
@@ -415,14 +441,14 @@ function buildPublicReviewContainer(deal, { botId } = {}) {
     deal.review_rating != null
       ? `${"★".repeat(deal.review_rating)}${"☆".repeat(5 - Number(deal.review_rating))}`
       : "—";
-  const authorLine = `${e("users")}**Auteur** — ${formatAuthor(deal.buyer_id, {
+  const authorLine = `${e("users")}**Customer** — ${formatAuthor(deal.buyer_id, {
     anonymous: Boolean(deal.review_anonymous),
   })}`;
-  const botMention = botId ? `<@${botId}>` : "le bot";
+  const botMention = botId ? `<@${botId}>` : "the bot";
   const when = discordTimestamp(deal.review_at || deal.completed_at || new Date().toISOString());
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`# ${e("confirm")}Nouvel avis`)
+    new TextDisplayBuilder().setContent(`# ${e("confirm")}New review`)
   );
   container.addSeparatorComponents(
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
@@ -430,10 +456,10 @@ function buildPublicReviewContainer(deal, { botId } = {}) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `${authorLine}\n` +
-        `${e("escrow")}Avis pour ${botMention}\n` +
+        `${e("escrow")}Review for ${botMention}\n` +
         `${e("ltc")}${formatCryptoAmountLine(deal)}\n` +
         `${e("confirm")}**Rating** — ${stars}\n\n` +
-        `**Note**\n${deal.review_text || "*Aucun texte*"}\n\n` +
+        `**Note**\n${deal.review_text || "*No text*"}\n\n` +
         `${e("clock")}${when}`
     )
   );
@@ -445,9 +471,9 @@ function buildReviewPostedContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("success")}Avis enregistré\n` +
-        `${e("confirm")}Merci — le deal est clôturé.\n` +
-        `${e("close")}Fermeture du salon…`
+      `## ${e("success")}Review saved\n` +
+        `${e("confirm")}Thanks — the deal is closed.\n` +
+        `${e("close")}Closing the channel…`
     )
   );
   return container;
@@ -458,20 +484,20 @@ function buildDisputeContainer(deal, openedBy) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("dispute")}Litige ouvert\n` +
-        `Ouvert par <@${openedBy}>.\n\n` +
-        `**Motif**\n${deal.dispute_reason || "*non précisé*"}\n\n` +
-        `${e("staff")}Actions staff :\n` +
-        `• **Libérer vendeur**\n` +
-        `• **Rembourser acheteur**\n` +
-        `• **Clôturer** sans transfert`
+      `## ${e("dispute")}Dispute opened\n` +
+        `Opened by <@${openedBy}>.\n\n` +
+        `**Reason**\n${deal.dispute_reason || "*not specified*"}\n\n` +
+        `${e("staff")}Staff actions:\n` +
+        `• **Release to customer**\n` +
+        `• **Refund seller**\n` +
+        `• **Close** without transfer`
     )
   );
 
   const releaseButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_staff_release:${deal.deal_code}`)
-      .setLabel("Libérer vendeur")
+      .setLabel("Release to customer")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!deal.seller_wallet),
     "release"
@@ -480,7 +506,7 @@ function buildDisputeContainer(deal, openedBy) {
   const refundButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_staff_refund:${deal.deal_code}`)
-      .setLabel("Rembourser acheteur")
+      .setLabel("Refund seller")
       .setStyle(ButtonStyle.Primary),
     "money"
   );
@@ -488,7 +514,7 @@ function buildDisputeContainer(deal, openedBy) {
   const resolveButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_staff_resolve:${deal.deal_code}`)
-      .setLabel("Clôturer sans payout")
+      .setLabel("Close without payout")
       .setStyle(ButtonStyle.Secondary),
     "staff"
   );
@@ -499,24 +525,24 @@ function buildDisputeContainer(deal, openedBy) {
   return container;
 }
 
-/** Remboursement diffusé — en attente de confirmation blockchain. */
 function buildRefundPendingContainer(deal) {
   const container = new ContainerBuilder();
   const wallet = deal.buyer_wallet || "—";
-  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const amount =
+    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
   const crypto = deal.crypto || "LTC";
   const txBlock = formatTxBlock(deal.payout_id);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("money")}Remboursement en cours\n` +
-        `${e("success")}Remboursement acheteur diffusé sur Litecoin.\n\n` +
-        `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
-        `${e("wallet")}**Adresse** — \`${wallet}\`\n` +
-        `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
-        `${e("clock")}**Statut** — ${statusLabel(deal.payout_status || "processing")}\n` +
+      `## ${e("money")}Refund in progress\n` +
+        `${e("success")}Seller refund broadcast on Litecoin.\n\n` +
+        `${e("buyer")}**Seller** — <@${deal.buyer_id}>\n` +
+        `${e("wallet")}**Address** — \`${wallet}\`\n` +
+        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+        `${e("clock")}**Status** — ${statusLabel(deal.payout_status || "processing")}\n` +
         (txBlock ? `${txBlock}\n` : "") +
-        `\n${e("clock")}Confirmation blockchain…`
+        `\n${e("clock")}Awaiting blockchain confirmation…`
     )
   );
 
@@ -529,15 +555,15 @@ function buildCloseTicketContainer(deal, byUserId, { reason = "cancelled" } = {}
   let body;
   if (reason === "refunded") {
     body =
-      `## ${e("success")}Remboursement confirmé\n` +
-      `${e("money")}Les fonds ont été renvoyés à l'acheteur.\n` +
-      (byUserId ? `Traité par <@${byUserId}>.\n\n` : "\n") +
-      `${e("staff")}Un membre du staff peut fermer ce salon.`;
+      `## ${e("success")}Refund confirmed\n` +
+      `${e("money")}Funds were returned to the seller.\n` +
+      (byUserId ? `Handled by <@${byUserId}>.\n\n` : "\n") +
+      `${e("staff")}A staff member can close this channel.`;
   } else {
     body =
-      `## ${e("cancel")}Deal annulé\n` +
-      (byUserId ? `Annulé par <@${byUserId}>.\n\n` : "\n") +
-      `${e("staff")}Un membre du staff doit fermer ce salon.`;
+      `## ${e("cancel")}Deal cancelled\n` +
+      (byUserId ? `Cancelled by <@${byUserId}>.\n\n` : "\n") +
+      `${e("staff")}A staff member must close this channel.`;
   }
 
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
@@ -545,7 +571,7 @@ function buildCloseTicketContainer(deal, byUserId, { reason = "cancelled" } = {}
   const closeButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_close:${deal.deal_code}`)
-      .setLabel("Fermer le salon")
+      .setLabel("Close channel")
       .setStyle(ButtonStyle.Danger),
     "close"
   );
@@ -555,11 +581,14 @@ function buildCloseTicketContainer(deal, byUserId, { reason = "cancelled" } = {}
 }
 
 module.exports = {
+  ROLE_PAYER,
+  ROLE_RECEIVER,
   buildRoleSelectionContainer,
   buildConfirmationContainer,
   buildFinalRecapContainer,
   buildPaymentContainer,
   buildPaymentSetupErrorContainer,
+  buildPaymentDetectedContainer,
   buildPaymentRetryContainer,
   buildPaymentFailedContainer,
   buildFundsHeldContainer,

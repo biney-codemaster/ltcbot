@@ -15,7 +15,7 @@ const {
 } = require("discord.js");
 const config = require("./config");
 const setupCommand = require("./commands/setup");
-const anonymeCommand = require("./commands/anonyme");
+const anonymousCommand = require("./commands/anonymous");
 const { handleDealModal } = require("./interactions/dealModal");
 const { ensurePrefsTable } = require("./utils/userPrefs");
 const {
@@ -58,7 +58,7 @@ const client = new Client({
 });
 
 ensurePrefsTable();
-const commands = [setupCommand.data.toJSON(), anonymeCommand.data.toJSON()];
+const commands = [setupCommand.data.toJSON(), anonymousCommand.data.toJSON()];
 
 async function registerCommands() {
   const rest = new REST().setToken(config.token);
@@ -68,24 +68,24 @@ async function registerCommands() {
   if (config.guildId) {
     await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: [] });
   }
-  console.log("Anciennes commandes supprimées.");
+  console.log("Old commands cleared.");
 
   // Enregistrement des commandes actuelles
   const route = config.guildId
     ? Routes.applicationGuildCommands(config.clientId, config.guildId)
     : Routes.applicationCommands(config.clientId);
   await rest.put(route, { body: commands });
-  console.log("Commandes enregistrées.");
+  console.log("Commands registered.");
 }
 
 // ---------- Modal (reste ici pour l'instant, sera déplacé avec la logique deal) ----------
 function buildDealModal() {
   const modal = new ModalBuilder()
     .setCustomId("escrow_deal_modal")
-    .setTitle("Nouveau deal");
+    .setTitle("New deal");
 
   const partnerLabel = new LabelBuilder()
-    .setLabel("ID Discord de l'autre personne")
+    .setLabel("Other person's Discord ID")
     .setTextInputComponent(
       new TextInputBuilder()
         .setCustomId("partner_id")
@@ -94,7 +94,7 @@ function buildDealModal() {
     );
 
   const productLabel = new LabelBuilder()
-    .setLabel("Produit")
+    .setLabel("Product")
     .setTextInputComponent(
       new TextInputBuilder()
         .setCustomId("product")
@@ -103,33 +103,33 @@ function buildDealModal() {
     );
 
   const priceLabel = new LabelBuilder()
-    .setLabel("Prix (nombre uniquement)")
+    .setLabel("Price (number only)")
     .setTextInputComponent(
       new TextInputBuilder()
         .setCustomId("price")
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
-        .setPlaceholder("ex: 25.50")
+        .setPlaceholder("e.g. 25.50")
     );
 
   const eurOption = new StringSelectMenuOptionBuilder()
     .setLabel("Euro (€)")
     .setValue("EUR")
-    .setDescription("Prix en euros");
+    .setDescription("Price in euros");
   if (config.emojis.eur) eurOption.setEmoji(config.emojis.eur);
 
   const usdOption = new StringSelectMenuOptionBuilder()
     .setLabel("Dollar ($)")
     .setValue("USD")
-    .setDescription("Prix en dollars");
+    .setDescription("Price in dollars");
   if (config.emojis.usd) usdOption.setEmoji(config.emojis.usd);
 
   const currencyLabel = new LabelBuilder()
-    .setLabel("Devise")
+    .setLabel("Currency")
     .setStringSelectMenuComponent(
       new StringSelectMenuBuilder()
         .setCustomId("currency")
-        .setPlaceholder("Choisir une devise")
+        .setPlaceholder("Choose a currency")
         .setRequired(true)
         .addOptions(eurOption, usdOption)
     );
@@ -137,15 +137,15 @@ function buildDealModal() {
   const ltcOption = new StringSelectMenuOptionBuilder()
     .setLabel("Litecoin (LTC)")
     .setValue("LTC")
-    .setDescription("Paiement en Litecoin");
+    .setDescription("Pay with Litecoin");
   if (config.emojis.ltc) ltcOption.setEmoji(config.emojis.ltc);
 
   const cryptoLabel = new LabelBuilder()
-    .setLabel("Crypto du deal")
+    .setLabel("Deal crypto")
     .setStringSelectMenuComponent(
       new StringSelectMenuBuilder()
         .setCustomId("crypto")
-        .setPlaceholder("Choisir une crypto")
+        .setPlaceholder("Choose a crypto")
         .setRequired(true)
         .addOptions(ltcOption)
     );
@@ -166,7 +166,7 @@ client.once(Events.ClientReady, async () => {
   }
   await probeLogChannels(client);
   startPaymentPoller(client);
-  console.log("Polling wallet LTC démarré (5s).");
+  console.log("LTC wallet polling started (5s).");
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -175,8 +175,8 @@ client.on("interactionCreate", async (interaction) => {
       await setupCommand.execute(interaction);
     }
 
-    if (interaction.isChatInputCommand() && interaction.commandName === "anonyme") {
-      await anonymeCommand.execute(interaction);
+    if (interaction.isChatInputCommand() && interaction.commandName === "anonymous") {
+      await anonymousCommand.execute(interaction);
     }
 
     if (interaction.isButton() && interaction.customId === "escrow_start_deal") {
@@ -286,7 +286,7 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     console.error("Erreur interaction:", err);
     const payload = {
-      content: "Une erreur est survenue. Réessaie ou contacte le staff.",
+      content: "Something went wrong. Try again or contact staff.",
       flags: MessageFlags.Ephemeral,
     };
     if (interaction.deferred || interaction.replied) {

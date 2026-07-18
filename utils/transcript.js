@@ -99,7 +99,7 @@ function renderButton(btn) {
 
 function renderSelect(select) {
   const data = select.data || select;
-  const placeholder = escapeHtml(data.placeholder || "Sélection");
+  const placeholder = escapeHtml(data.placeholder || "Select");
   const options = (data.options || [])
     .map((o) => `<option>${escapeHtml(o.label || o.value || "")}</option>`)
     .join("");
@@ -165,7 +165,7 @@ function renderComponent(comp) {
     return `<div class="section">${kids}</div>`;
   }
   if (type === ComponentType.MediaGallery || type === 12) {
-    return `<div class="muted">[galerie média]</div>`;
+    return `<div class="muted">[media gallery]</div>`;
   }
   if (type === ComponentType.File || type === 13) {
     return `<div class="muted">[fichier]</div>`;
@@ -246,7 +246,7 @@ async function buildHtmlTranscript(channel, deal) {
     .join("\n");
 
   const html = `<!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8"/>
 <title>Deal #${escapeHtml(deal.deal_code)}</title>
@@ -291,7 +291,7 @@ async function buildHtmlTranscript(channel, deal) {
 </head>
 <body>
   <div class="ticket">
-    ${rows || "<p class='muted'>Aucun message.</p>"}
+    ${rows || "<p class='muted'>No messages.</p>"}
   </div>
 </body>
 </html>`;
@@ -315,9 +315,9 @@ function buildTranscriptNoticeContainer(deal, audience) {
   );
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("success")}Deal clôturé — ${discordTimestamp(deal.completed_at || new Date().toISOString())}\n\n` +
-        `${e("info")}Le fichier HTML joint reprend le **ticket tel quel** (messages, containers, boutons).\n` +
-        `${e("shield")}Conserve-le comme preuve.`
+      `${e("success")}Deal closed — ${discordTimestamp(deal.completed_at || new Date().toISOString())}\n\n` +
+        `${e("info")}The attached HTML file is the **ticket as-is** (messages, containers, buttons).\n` +
+        `${e("shield")}Keep it as proof.`
     )
   );
   return container;

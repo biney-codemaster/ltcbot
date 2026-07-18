@@ -45,19 +45,19 @@ function fiatCurrencyCode(currencySymbol) {
 
 function statusLabel(status) {
   const labels = {
-    waiting: "En attente de paiement",
-    pending: "Confirmation blockchain",
-    underpaid: "Paiement partiel",
-    paid: "Paiement reçu",
-    expired: "Expiré",
-    error: "Erreur",
-    cancelled: "Annulé",
-    processing: "Payout diffusé",
-    confirming: "Confirmation payout",
-    confirmed: "Payout confirmé",
-    failed: "Payout échoué",
+    waiting: "Awaiting payment",
+    pending: "Blockchain confirmation",
+    underpaid: "Partial payment",
+    paid: "Payment received",
+    expired: "Expired",
+    error: "Error",
+    cancelled: "Cancelled",
+    processing: "Payout broadcast",
+    confirming: "Payout confirming",
+    confirmed: "Payout confirmed",
+    failed: "Payout failed",
   };
-  return labels[status] || status || "Inconnu";
+  return labels[status] || status || "Unknown";
 }
 
 function isValidLtcAddress(address) {
@@ -550,7 +550,7 @@ async function findBuyerRefundAddress(deal) {
 
   if (scores.size === 0) {
     throw new Error(
-      "Impossible de déterminer l'adresse de l'acheteur (txs sans expéditeur lisible)"
+      "Could not determine the seller refund address (no readable sender in txs)"
     );
   }
 
@@ -564,7 +564,7 @@ async function findBuyerRefundAddress(deal) {
   }
 
   if (!best || !isValidLtcAddress(best)) {
-    throw new Error("Adresse acheteur détectée invalide");
+    throw new Error("Detected seller address is invalid");
   }
 
   return { address: best, escrow, scoreLitoshis: bestScore };
@@ -667,7 +667,7 @@ async function sweepDealToAddress(deal, toAddress) {
  */
 async function payoutToSeller(deal) {
   if (!deal.seller_wallet) {
-    throw new Error("Adresse LTC du vendeur manquante");
+    throw new Error("Customer LTC address missing");
   }
   const seller = deal.seller_wallet.trim();
   const owner = getOwnerLtcWallet();

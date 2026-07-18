@@ -18,6 +18,7 @@ const {
   buildPaymentContainer,
   buildFundsHeldContainer,
   buildPaymentFailedContainer,
+  buildPaymentDetectedContainer,
   buildPaymentRetryContainer,
   buildPayoutConfirmedContainer,
   buildReviewRequestContainer,
@@ -129,10 +130,25 @@ async function regeneratePaymentAfterIncorrect(deal) {
   return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
 }
 
+async function publishPaymentDetected(deal) {
+  if (!client || !deal.channel_id) return;
+  try {
+    const channel = await client.channels.fetch(deal.channel_id);
+    if (!channel?.isTextBased()) return;
+    await channel.send({
+      components: [buildPaymentDetectedContainer(deal)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.error(`Payment detected msg #${deal.deal_code}:`, err.message);
+  }
+}
+
 async function refreshDealPayment(deal) {
   if (!deal?.payment_id || !client) return deal;
   if (deal.payment_status === "incorrect_processing") return deal;
 
+  const prevStatus = deal.payment_status;
   const payment = await getPaymentStatus(deal.payment_id);
   const paymentStatus = payment.payment_status;
 
@@ -150,6 +166,16 @@ async function refreshDealPayment(deal) {
 
   let updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
 
+  // Mempool detection → new container (before confirmed)
+  if (
+    updated.status === "awaiting_payment" &&
+    paymentStatus === "pending" &&
+    prevStatus !== "pending" &&
+    prevStatus !== "paid"
+  ) {
+    await publishPaymentDetected(updated);
+  }
+
   if (isPaidStatus(paymentStatus) && updated.status === "awaiting_payment") {
     const received =
       resolvePayoutAmount(updated, payment) ?? Number(payment.actually_paid);
@@ -159,12 +185,12 @@ async function refreshDealPayment(deal) {
     if (cmp === "under") {
       if (!getOwnerLtcWallet()) {
         console.error(
-          `[payment] Sous-paiement #${updated.deal_code} mais OWNER_LTC_WALLET manquant`
+          `[payment] Underpayment #${updated.deal_code} mais OWNER_LTC_WALLET manquant`
         );
-        await logAdmin(client, `Sous-paiement KO #${dealCodeTag(updated.deal_code)}`, [
-          `${e("error")}OWNER_LTC_WALLET manquant — fonds non routés`,
-          `${e("ltc")}**Reçu** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
-          `${e("ltc")}**Attendu** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+        await logAdmin(client, `Underpayment failed #${dealCodeTag(updated.deal_code)}`, [
+          `${e("error")}OWNER_LTC_WALLET missing — funds not routed`,
+          `${e("ltc")}**Received** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+          `${e("ltc")}**Expected** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
           ...formatBuyerSellerLines(updated),
         ]);
         return updated;
@@ -180,10 +206,10 @@ async function refreshDealPayment(deal) {
 
       try {
         const sweep = await sweepToOwnerWallet(updated);
-        await logAdmin(client, `Sous-paiement #${dealCodeTag(updated.deal_code)}`, [
-          `${e("warning")}Montant insuffisant — fonds routés owner (interne)`,
-          `${e("ltc")}**Reçu** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
-          `${e("ltc")}**Attendu** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+        await logAdmin(client, `Underpayment #${dealCodeTag(updated.deal_code)}`, [
+          `${e("warning")}Insufficient amount — routed to owner (internal)`,
+          `${e("ltc")}**Received** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+          `${e("ltc")}**Expected** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
           formatTxidLine(sweep.payoutId),
           ...formatBuyerSellerLines(updated),
         ]);
@@ -193,7 +219,7 @@ async function refreshDealPayment(deal) {
           `UPDATE deals SET payment_status = 'waiting', updated_at = datetime('now')
            WHERE deal_code = ?`
         ).run(updated.deal_code);
-        await logAdmin(client, `Sous-paiement sweep KO #${dealCodeTag(updated.deal_code)}`, [
+        await logAdmin(client, `Underpayment sweep failed #${dealCodeTag(updated.deal_code)}`, [
           `${e("error")}${err.message}`,
         ]);
         return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
@@ -218,11 +244,11 @@ async function refreshDealPayment(deal) {
     updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
     await publishFundsHeld(updated);
     const fundingTxid = await findFundingTxid(updated).catch(() => null);
-    await logAdmin(client, `Paiement reçu #${dealCodeTag(updated.deal_code)}`, [
-      `${e("shield")}Fonds sécurisés en escrow`,
-      `${e("ltc")}**Attendu** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
-      `${e("ltc")}**Reçu** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
-      cmp === "over" ? `${e("info")}Surpaiement — surplus owner au payout (interne)` : null,
+    await logAdmin(client, `Payment received #${dealCodeTag(updated.deal_code)}`, [
+      `${e("shield")}Funds secured in escrow`,
+      `${e("ltc")}**Expected** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+      `${e("ltc")}**Received** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+      cmp === "over" ? `${e("info")}Overpayment — surplus to owner at payout (internal)` : null,
       `${e("wallet")}**Adresse** — \`${updated.pay_address || "—"}\``,
       formatTxidLine(fundingTxid),
       ...formatBuyerSellerLines(updated),
@@ -279,7 +305,7 @@ async function refreshDealPayout(deal) {
         const channel = await client.channels.fetch(deal.channel_id);
         if (channel?.isTextBased()) {
           if (newlyConfirmed) {
-            // Remboursement staff → attendre confirm puis container de fermeture
+            // Refund staff → attendre confirm puis container de fermeture
             if (deal.status === "refunding") {
               db.prepare(
                 `UPDATE deals
@@ -302,8 +328,8 @@ async function refreshDealPayout(deal) {
                 flags: MessageFlags.IsComponentsV2,
               });
 
-              await logAdmin(client, `Remboursement confirmé #${dealCodeTag(deal.deal_code)}`, [
-                `${e("success")}Fonds renvoyés à l'acheteur`,
+              await logAdmin(client, `Refund confirmed #${dealCodeTag(deal.deal_code)}`, [
+                `${e("success")}Funds returned to seller`,
                 formatTxidLine(deal.payout_id),
                 `${e("wallet")}**Adresse** — \`${deal.buyer_wallet || "—"}\``,
                 ...formatBuyerSellerLines(refunded),
@@ -339,25 +365,25 @@ async function refreshDealPayout(deal) {
               ).run(deal.deal_code);
             }
 
-            await logAdmin(client, `Payout confirmé #${dealCodeTag(deal.deal_code)}`, [
-              `${e("success")}Fonds envoyés au vendeur`,
+            await logAdmin(client, `Payout confirmed #${dealCodeTag(deal.deal_code)}`, [
+              `${e("success")}Funds sent to customer`,
               formatTxidLine(deal.payout_id),
               `${e("wallet")}**Adresse** — \`${deal.seller_wallet || "—"}\``,
               ...formatBuyerSellerLines(confirmed),
-              `${e("next")}En attente de l'avis acheteur`,
+              `${e("next")}Waiting for seller review`,
             ]);
 
             return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
           }
 
-          const failLabel = deal.status === "refunding" ? "Remboursement" : "Payout";
+          const failLabel = deal.status === "refunding" ? "Refund" : "Payout";
           await channel.send({
             content:
-              `${e("error")}${failLabel} #${dealCodeTag(deal.deal_code)} échoué — statut **${payoutStatus}**.\n` +
+              `${e("error")}${failLabel} #${dealCodeTag(deal.deal_code)} failed — status **${payoutStatus}**.\n` +
               `${formatTxidLine(deal.payout_id) || ""}`,
           }).catch(() => {});
 
-          await logAdmin(client, `${failLabel} échoué #${dealCodeTag(deal.deal_code)}`, [
+          await logAdmin(client, `${failLabel} failed #${dealCodeTag(deal.deal_code)}`, [
             `${e("error")}Statut **${payoutStatus}**`,
             formatTxidLine(deal.payout_id),
             ...formatBuyerSellerLines(deal),

@@ -45,15 +45,15 @@ function formatTxidLine(txid, { emoji = true } = {}) {
   const prefix = emoji ? `${e("info")}` : "";
   if (/^[a-f0-9]{64}$/i.test(id)) {
     const url = getExplorerTxUrl(id);
-    return `${prefix}**TXID** — \`${id}\` · [Lien](${url})`;
+    return `${prefix}**TXID** — \`${id}\` · [Link](${url})`;
   }
   return `${prefix}**TXID** — \`${id}\``;
 }
 
 function formatBuyerSellerLines(deal) {
   return [
-    `${e("buyer")}**Acheteur** — <@${deal.buyer_id || "?"}>`,
-    `${e("seller")}**Vendeur** — <@${deal.seller_id || "?"}>`,
+    `${e("buyer")}**Seller** — <@${deal.buyer_id || "?"}>`,
+    `${e("seller")}**Customer** — <@${deal.seller_id || "?"}>`,
   ];
 }
 
@@ -186,16 +186,15 @@ async function logPublicCompleted(client, deal) {
   const crypto = deal.crypto || "LTC";
   const when = discordTimestamp(deal.completed_at || deal.review_at || deal.updated_at);
 
-  const buyerAnon =
-    deal.review_anonymous != null
-      ? Boolean(deal.review_anonymous)
-      : isUserAnonymous(deal.buyer_id);
-  const sellerAnon = isUserAnonymous(deal.seller_id);
+  // Seller (payer / buyer_id) + Customer (receiver / seller_id) — both honor /anonymous
+  const sellerAnon =
+    Boolean(deal.review_anonymous) || isUserAnonymous(deal.buyer_id);
+  const customerAnon = isUserAnonymous(deal.seller_id);
   const txLine = formatTxidLine(deal.payout_id);
 
   const container = new ContainerBuilder();
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`# ${e("success")}Deal complété`)
+    new TextDisplayBuilder().setContent(`# ${e("success")}Deal completed`)
   );
   container.addSeparatorComponents(
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
@@ -204,8 +203,8 @@ async function logPublicCompleted(client, deal) {
     new TextDisplayBuilder().setContent(
       `## ${e("ltc")}${crypto}\n` +
         `${formatCryptoAmountLine(deal)}\n\n` +
-        `${e("buyer")}**Acheteur** — ${formatAuthor(deal.buyer_id, { anonymous: buyerAnon })}\n` +
-        `${e("seller")}**Vendeur** — ${formatAuthor(deal.seller_id, { anonymous: sellerAnon })}\n` +
+        `${e("buyer")}**Seller** — ${formatAuthor(deal.buyer_id, { anonymous: sellerAnon })}\n` +
+        `${e("seller")}**Customer** — ${formatAuthor(deal.seller_id, { anonymous: customerAnon })}\n` +
         (txLine ? `\n${txLine}\n` : "\n") +
         `\n${e("clock")}${when}`
     )
@@ -268,10 +267,10 @@ async function probeLogChannels(client) {
     cleanChannelId(process.env.AVIS_CHANNEL_ID);
 
   if (adminId) {
-    await logAdmin(client, "Bot démarré", [
-      `Bot connecté — logs admin opérationnels.`,
-      `Public logs: ${config.publicLogsChannelId ? "OK" : "non configuré"}`,
-      `Reviews: ${config.reviewsChannelId ? "OK" : "non configuré"}`,
+    await logAdmin(client, "Bot started", [
+      `Bot connected — admin logs OK.`,
+      `Public logs: ${config.publicLogsChannelId ? "OK" : "not configured"}`,
+      `Reviews: ${config.reviewsChannelId ? "OK" : "not configured"}`,
     ]);
   } else {
     console.warn(

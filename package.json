@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node -e \"require('./utils/ltcWallet'); require('./utils/paymentPoller'); require('./utils/dealContainer'); require('./utils/dealLogger'); require('./utils/transcript'); require('./utils/dealFinalize'); require('./utils/userPrefs'); require('./commands/anonyme'); console.log('ok')\""
+    "test": "node -e \"require('./utils/ltcWallet'); require('./utils/paymentPoller'); require('./utils/dealContainer'); require('./utils/dealLogger'); require('./utils/transcript'); require('./utils/dealFinalize'); require('./utils/userPrefs'); require('./commands/anonymous'); console.log('ok')\""
   },
   "keywords": [],
   "author": "",

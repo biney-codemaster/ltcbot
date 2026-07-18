@@ -16,14 +16,14 @@ const { e, emojis } = config;
 
 const data = new SlashCommandBuilder()
   .setName("setup")
-  .setDescription("Affiche le panneau pour démarrer un deal en escrow")
+  .setDescription("Post the deal panel in this channel")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
 
 function buildSetupContainer() {
   const container = new ContainerBuilder();
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`# ${e("escrow")}Système d'escrow`)
+    new TextDisplayBuilder().setContent(`# ${e("escrow")}Escrow system`)
   );
 
   container.addSeparatorComponents(
@@ -32,15 +32,15 @@ function buildSetupContainer() {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("shield")}Intermédiaire de confiance entre **acheteur** et **vendeur**.\n` +
-        `Les fonds sont sécurisés sur une **adresse Litecoin dédiée** jusqu'à confirmation de réception.\n\n` +
-        `${e("money")}**0 frais** de service — seuls les **frais réseau** Litecoin s'appliquent.\n\n` +
-        `## ${e("info")}Déroulement\n` +
-        `1. Création du deal et salon privé\n` +
-        `2. Choix des rôles (acheteur / vendeur)\n` +
-        `3. Confirmation mutuelle des termes\n` +
-        `4. Paiement LTC puis libération vers le vendeur\n\n` +
-        `${e("lock")}**Anonymat** — utilise \`/anonyme\` pour apparaître anonyme (ou non) dans les avis et logs publics.`
+      `${e("shield")}Trusted middleman between **seller** and **customer**.\n` +
+        `Funds are secured on a **dedicated Litecoin address** until delivery is confirmed.\n\n` +
+        `${e("money")}**0 service fees** — only Litecoin **network fees** apply.\n\n` +
+        `## ${e("info")}How it works\n` +
+        `1. Create a deal and private channel\n` +
+        `2. Choose roles (seller / customer)\n` +
+        `3. Mutual confirmation of terms\n` +
+        `4. LTC payment then release to the customer\n\n` +
+        `${e("lock")}**Anonymity** — use \`/anonymous\` to appear anonymous (or not) in reviews and public logs.`
     )
   );
 
@@ -50,8 +50,8 @@ function buildSetupContainer() {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("deal")}Nouveau deal\n` +
-        `Clique ci-dessous pour ouvrir un deal sécurisé.`
+      `## ${e("deal")}New deal\n` +
+        `Click below to open a secured deal.`
     )
   );
 
@@ -62,7 +62,6 @@ function buildSetupContainer() {
 
   const rowButtons = [];
 
-  // Bouton décoratif en 1re position (emoji escrow) — clic silencieux
   if (emojis.escrow) {
     rowButtons.push(
       new ButtonBuilder()
@@ -82,13 +81,18 @@ function buildSetupContainer() {
 async function execute(interaction) {
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
     return interaction.reply({
-      content: `${e("error")}Permission refusée. Il faut **Gérer le serveur**.`,
+      content: `${e("error")}Permission denied. You need **Manage Server**.`,
       flags: MessageFlags.Ephemeral,
     });
   }
 
-  const container = buildSetupContainer();
   await interaction.reply({
+    content: `${e("success")}Panel sent.`,
+    flags: MessageFlags.Ephemeral,
+  });
+
+  const container = buildSetupContainer();
+  await interaction.channel.send({
     components: [container],
     flags: MessageFlags.IsComponentsV2,
   });
