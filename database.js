@@ -162,6 +162,16 @@ try {
 } catch {
   // colonne déjà présente
 }
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN expected_pay_amount REAL`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN received_pay_amount REAL`);
+} catch {
+  // colonne déjà présente
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS wallet_meta (

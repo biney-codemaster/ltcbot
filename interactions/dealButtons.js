@@ -116,6 +116,8 @@ async function createAndSendPayment(channel, deal) {
      SET payment_id = @payment_id,
          pay_address = @pay_address,
          pay_amount = @pay_amount,
+         expected_pay_amount = @expected_pay_amount,
+         received_pay_amount = NULL,
          payment_status = @payment_status,
          status = 'awaiting_payment',
          payout_error = NULL,
@@ -125,6 +127,7 @@ async function createAndSendPayment(channel, deal) {
     payment_id: String(payment.payment_id),
     pay_address: payment.pay_address,
     pay_amount: payAmount,
+    expected_pay_amount: payAmount,
     payment_status: payment.payment_status || "waiting",
     deal_code: deal.deal_code,
   });

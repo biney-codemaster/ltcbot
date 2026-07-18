@@ -315,14 +315,23 @@ function estimateVsize(inputCount, outputCount) {
   return Math.ceil(10.5 + inputCount * 68.25 + outputCount * 31) + 4;
 }
 
-function buildSweepTransaction(spendable, payment, keyPair, toAddress, fee, total) {
-  const sendValue = total - fee;
-  if (sendValue <= DUST_LITOSHIS) {
-    throw new Error(
-      `Solde trop bas pour couvrir les frais réseau (${litoshisToLtc(total)} LTC, frais ≈ ${litoshisToLtc(fee)} LTC)`
-    );
+function getOwnerLtcWallet() {
+  const addr = String(process.env.OWNER_LTC_WALLET || "").trim();
+  if (!addr) return null;
+  if (!isValidLtcAddress(addr)) {
+    console.warn("[wallet] OWNER_LTC_WALLET invalide — ignorée");
+    return null;
   }
+  return addr;
+}
 
+function expectedPayLitoshis(deal) {
+  const n = Number(deal.expected_pay_amount ?? deal.pay_amount);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return ltcToLitoshis(n);
+}
+
+function buildSignedTx(spendable, payment, keyPair, outputs) {
   const psbt = new bitcoin.Psbt({ network: LITECOIN });
   for (const utxo of spendable) {
     psbt.addInput({
@@ -334,17 +343,59 @@ function buildSweepTransaction(spendable, payment, keyPair, toAddress, fee, tota
       },
     });
   }
-  psbt.addOutput({
-    address: toAddress,
-    value: sendValue,
-  });
-
+  for (const out of outputs) {
+    psbt.addOutput({
+      address: out.address,
+      value: out.value,
+    });
+  }
   for (let i = 0; i < spendable.length; i++) {
     psbt.signInput(i, keyPair);
   }
   psbt.finalizeAllInputs();
-  const tx = psbt.extractTransaction();
+  return psbt.extractTransaction();
+}
+
+function buildSweepTransaction(spendable, payment, keyPair, toAddress, fee, total) {
+  const sendValue = total - fee;
+  if (sendValue <= DUST_LITOSHIS) {
+    throw new Error(
+      `Solde trop bas pour couvrir les frais réseau (${litoshisToLtc(total)} LTC, frais ≈ ${litoshisToLtc(fee)} LTC)`
+    );
+  }
+
+  const tx = buildSignedTx(spendable, payment, keyPair, [
+    { address: toAddress, value: sendValue },
+  ]);
   return { tx, sendValue };
+}
+
+function buildSplitTransaction(
+  spendable,
+  payment,
+  keyPair,
+  sellerAddress,
+  ownerAddress,
+  sellerValue,
+  ownerValue,
+  fee,
+  total
+) {
+  if (sellerValue + ownerValue + fee !== total) {
+    throw new Error("Split payout incohérent (somme ≠ total)");
+  }
+  if (sellerValue <= DUST_LITOSHIS) {
+    throw new Error("Montant vendeur trop bas (dust)");
+  }
+  if (ownerValue <= DUST_LITOSHIS) {
+    throw new Error("Reste owner trop bas (dust)");
+  }
+
+  const tx = buildSignedTx(spendable, payment, keyPair, [
+    { address: sellerAddress, value: sellerValue },
+    { address: ownerAddress, value: ownerValue },
+  ]);
+  return { tx, sellerValue, ownerValue };
 }
 
 function parseMinRelayRequired(errMessage) {
@@ -519,14 +570,7 @@ async function findBuyerRefundAddress(deal) {
   return { address: best, escrow, scoreLitoshis: bestScore };
 }
 
-/**
- * Sweep les UTXO du deal vers une adresse LTC (vendeur ou remboursement acheteur).
- */
-async function sweepDealToAddress(deal, toAddress) {
-  if (!toAddress || !isValidLtcAddress(toAddress)) {
-    throw new Error("Adresse LTC de destination invalide");
-  }
-
+async function loadSpendableUtxos(deal) {
   const index =
     deal.wallet_index != null
       ? Number(deal.wallet_index)
@@ -545,12 +589,23 @@ async function sweepDealToAddress(deal, toAddress) {
   }
 
   const total = spendable.reduce((sum, u) => sum + BigInt(u.value), 0n);
-  const feeRate = await getFeeRate();
-  let fee = BigInt(estimateVsize(spendable.length, 1) * feeRate);
-
   const keyPair = ECPair.fromPrivateKey(Buffer.from(child.privateKey), {
     network: LITECOIN,
   });
+  return { index, address, payment, child, spendable, total, keyPair };
+}
+
+/**
+ * Sweep les UTXO du deal vers une adresse LTC (vendeur, owner ou remboursement).
+ */
+async function sweepDealToAddress(deal, toAddress) {
+  if (!toAddress || !isValidLtcAddress(toAddress)) {
+    throw new Error("Adresse LTC de destination invalide");
+  }
+
+  const { address, payment, spendable, total, keyPair } = await loadSpendableUtxos(deal);
+  const feeRate = await getFeeRate();
+  let fee = BigInt(estimateVsize(spendable.length, 1) * feeRate);
   const dest = toAddress.trim();
 
   let { tx, sendValue } = buildSweepTransaction(
@@ -607,13 +662,126 @@ async function sweepDealToAddress(deal, toAddress) {
 }
 
 /**
- * Envoie les LTC de l'adresse du deal vers le vendeur (sweep minus fees).
+ * Payout vendeur : montant exact attendu.
+ * Surpaiement → reste (après frais) vers OWNER_LTC_WALLET (silencieux côté ticket).
  */
-async function payoutToSeller(deal, paymentDetails) {
+async function payoutToSeller(deal) {
   if (!deal.seller_wallet) {
     throw new Error("Adresse LTC du vendeur manquante");
   }
-  return sweepDealToAddress(deal, deal.seller_wallet.trim());
+  const seller = deal.seller_wallet.trim();
+  const owner = getOwnerLtcWallet();
+  const expected = expectedPayLitoshis(deal);
+
+  const { address, payment, spendable, total, keyPair } = await loadSpendableUtxos(deal);
+  const feeRate = await getFeeRate();
+
+  // Exact ou pas d'owner / pas d'expected → sweep classique vers vendeur
+  if (!owner || expected == null || total <= expected) {
+    return sweepDealToAddress(deal, seller);
+  }
+
+  let fee = BigInt(estimateVsize(spendable.length, 2) * feeRate);
+  let ownerValue = total - expected - fee;
+
+  if (ownerValue <= DUST_LITOSHIS) {
+    // Pas assez de surplus pour une 2e sortie → sweep vendeur (frais inclus)
+    return sweepDealToAddress(deal, seller);
+  }
+
+  let { tx, sellerValue, ownerValue: ownOut } = buildSplitTransaction(
+    spendable,
+    payment,
+    keyPair,
+    seller,
+    owner,
+    expected,
+    ownerValue,
+    fee,
+    total
+  );
+
+  const needed = BigInt(Math.ceil(tx.virtualSize() * feeRate) + 8);
+  if (fee < needed) {
+    fee = needed;
+    ownerValue = total - expected - fee;
+    if (ownerValue <= DUST_LITOSHIS) {
+      return sweepDealToAddress(deal, seller);
+    }
+    ({ tx, sellerValue, ownerValue: ownOut } = buildSplitTransaction(
+      spendable,
+      payment,
+      keyPair,
+      seller,
+      owner,
+      expected,
+      ownerValue,
+      fee,
+      total
+    ));
+  }
+
+  let txid;
+  try {
+    txid = await explorerPostTx(tx.toHex());
+  } catch (err) {
+    const required = parseMinRelayRequired(err.message);
+    if (required == null) throw err;
+    fee = required + 20n;
+    ownerValue = total - expected - fee;
+    if (ownerValue <= DUST_LITOSHIS) {
+      return sweepDealToAddress(deal, seller);
+    }
+    ({ tx, sellerValue, ownerValue: ownOut } = buildSplitTransaction(
+      spendable,
+      payment,
+      keyPair,
+      seller,
+      owner,
+      expected,
+      ownerValue,
+      fee,
+      total
+    ));
+    txid = await explorerPostTx(tx.toHex());
+  }
+
+  console.log(
+    `[wallet] payout split deal=${deal.deal_code} seller=${litoshisToLtc(sellerValue)} owner=${litoshisToLtc(ownOut)} fee=${litoshisToLtc(fee)} tx=${txid}`
+  );
+
+  return {
+    payoutId: txid,
+    status: "processing",
+    raw: {
+      txid,
+      from: address,
+      to: seller,
+      amount_ltc: litoshisToLtc(sellerValue),
+      fee_ltc: litoshisToLtc(fee),
+      split: true,
+    },
+  };
+}
+
+/** Envoie silencieusement le solde escrow vers le wallet owner (sous-paiement). */
+async function sweepToOwnerWallet(deal) {
+  const owner = getOwnerLtcWallet();
+  if (!owner) {
+    throw new Error("OWNER_LTC_WALLET non configuré");
+  }
+  return sweepDealToAddress(deal, owner);
+}
+
+/** Compare montant reçu vs attendu : 'under' | 'exact' | 'over' | null */
+function comparePaymentAmount(deal, receivedLtc) {
+  const expected = expectedPayLitoshis(deal);
+  if (expected == null) return null;
+  const received = ltcToLitoshis(Number(receivedLtc));
+  if (received <= 0n) return null;
+  if (received < expected) return "under";
+  if (received > expected) return "over";
+  return "exact";
 }
 
 /** Rembourse l'acheteur (litige) vers son adresse LTC. */
@@ -688,6 +856,10 @@ module.exports = {
   findBuyerRefundAddress,
   findFundingTxid,
   sweepDealToAddress,
+  sweepToOwnerWallet,
+  getOwnerLtcWallet,
+  comparePaymentAmount,
+  expectedPayLitoshis,
   resolvePayoutAmount,
   statusLabel,
   isPaidStatus,

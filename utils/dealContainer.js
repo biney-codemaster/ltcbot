@@ -158,12 +158,13 @@ function buildPaymentContainer(deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("payment")}Paiement escrow\n` +
-        `${e("buyer")}<@${deal.buyer_id}> envoie le montant exact ci-dessous.\n\n` +
+        `${e("buyer")}<@${deal.buyer_id}> envoie **exactement** le montant ci-dessous.\n\n` +
         `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
         `${e("money")}**Prix** — ${deal.price}${deal.currency}\n` +
         `${e("wallet")}**Adresse** — \`${address}\`\n` +
         `${e("clock")}**Statut** — ${status}\n\n` +
-        `${e("warning")}Envoie uniquement du **${crypto}** à cette adresse.`
+        `${e("warning")}Envoie uniquement du **${crypto}** à cette adresse.\n` +
+        `${e("warning")}Si le montant n'est **pas exact**, **aucun remboursement** ne sera effectué.`
     )
   );
 
@@ -208,6 +209,39 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(retryButton));
+  return container;
+}
+
+/** Après un montant incorrect — nouvelle adresse, sans détail interne. */
+function buildPaymentRetryContainer(deal) {
+  const container = new ContainerBuilder();
+  const amount = formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
+  const address = deal.pay_address || "*adresse en cours*";
+  const crypto = deal.crypto || "LTC";
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("warning")}Montant incorrect\n` +
+        `Le montant reçu ne correspond pas au montant exact demandé.\n` +
+        `${e("warning")}**Aucun remboursement** ne sera effectué.\n\n` +
+        `${e("buyer")}<@${deal.buyer_id}> — renvoie **exactement** :\n\n` +
+        `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
+        `${e("wallet")}**Adresse** — \`${address}\`\n\n` +
+        `${e("warning")}Envoie uniquement du **${crypto}** à cette adresse.`
+    )
+  );
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      applyEmoji(
+        new ButtonBuilder()
+          .setCustomId(`deal_dispute:${deal.deal_code}`)
+          .setLabel("Ouvrir un litige")
+          .setStyle(ButtonStyle.Danger),
+        "dispute"
+      )
+    )
+  );
   return container;
 }
 
@@ -526,6 +560,7 @@ module.exports = {
   buildFinalRecapContainer,
   buildPaymentContainer,
   buildPaymentSetupErrorContainer,
+  buildPaymentRetryContainer,
   buildPaymentFailedContainer,
   buildFundsHeldContainer,
   buildReleasedContainer,

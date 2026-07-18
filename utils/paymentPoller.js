@@ -9,11 +9,16 @@ const {
   isPayoutDoneStatus,
   isPayoutFailedStatus,
   findFundingTxid,
+  comparePaymentAmount,
+  createLtcPayment,
+  sweepToOwnerWallet,
+  getOwnerLtcWallet,
 } = require("./ltcWallet");
 const {
   buildPaymentContainer,
   buildFundsHeldContainer,
   buildPaymentFailedContainer,
+  buildPaymentRetryContainer,
   buildPayoutConfirmedContainer,
   buildReviewRequestContainer,
   buildCloseTicketContainer,
@@ -75,26 +80,70 @@ function getPendingPayoutDeals() {
     .all();
 }
 
+async function regeneratePaymentAfterIncorrect(deal) {
+  const keptExpected = Number(deal.expected_pay_amount ?? deal.pay_amount);
+  const payment = await createLtcPayment(deal);
+  const payAmount = Number.isFinite(keptExpected) && keptExpected > 0
+    ? keptExpected
+    : payment.pay_amount;
+
+  db.prepare(
+    `UPDATE deals
+     SET payment_id = @payment_id,
+         pay_address = @pay_address,
+         pay_amount = @pay_amount,
+         expected_pay_amount = @expected_pay_amount,
+         received_pay_amount = NULL,
+         payment_status = 'waiting',
+         wallet_index = @wallet_index,
+         status = 'awaiting_payment',
+         updated_at = datetime('now')
+     WHERE deal_code = @deal_code`
+  ).run({
+    payment_id: String(payment.payment_id),
+    pay_address: payment.pay_address,
+    pay_amount: payAmount,
+    expected_pay_amount: payAmount,
+    wallet_index: payment.wallet_index,
+    deal_code: deal.deal_code,
+  });
+
+  const updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
+  if (!client || !updated.channel_id) return updated;
+
+  try {
+    const channel = await client.channels.fetch(updated.channel_id);
+    if (channel?.isTextBased()) {
+      const msg = await channel.send({
+        components: [buildPaymentRetryContainer(updated)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      db.prepare(
+        `UPDATE deals SET payment_message_id = @id WHERE deal_code = @deal_code`
+      ).run({ id: msg.id, deal_code: updated.deal_code });
+    }
+  } catch (err) {
+    console.error(`Retry payment msg #${deal.deal_code}:`, err.message);
+  }
+
+  return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
+}
+
 async function refreshDealPayment(deal) {
   if (!deal?.payment_id || !client) return deal;
+  if (deal.payment_status === "incorrect_processing") return deal;
 
   const payment = await getPaymentStatus(deal.payment_id);
   const paymentStatus = payment.payment_status;
-  // Garder le montant attendu (cours) tant que non payé ; une fois payé = montant réel reçu
-  const resolvedAmount = isPaidStatus(paymentStatus)
-    ? resolvePayoutAmount(deal, payment)
-    : deal.pay_amount;
 
   db.prepare(
     `UPDATE deals
      SET payment_status = @payment_status,
-         pay_amount = COALESCE(@pay_amount, pay_amount),
          pay_address = COALESCE(@pay_address, pay_address),
          updated_at = datetime('now')
      WHERE deal_code = @deal_code`
   ).run({
     payment_status: paymentStatus,
-    pay_amount: resolvedAmount,
     pay_address: payment.pay_address || null,
     deal_code: deal.deal_code,
   });
@@ -102,25 +151,78 @@ async function refreshDealPayment(deal) {
   let updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
 
   if (isPaidStatus(paymentStatus) && updated.status === "awaiting_payment") {
+    const received =
+      resolvePayoutAmount(updated, payment) ?? Number(payment.actually_paid);
+    const cmp = comparePaymentAmount(updated, received);
+
+    // Sous-paiement → sweep owner silencieux + nouvelle adresse (ticket sans mention owner)
+    if (cmp === "under") {
+      if (!getOwnerLtcWallet()) {
+        console.error(
+          `[payment] Sous-paiement #${updated.deal_code} mais OWNER_LTC_WALLET manquant`
+        );
+        await logAdmin(client, `Sous-paiement KO #${dealCodeTag(updated.deal_code)}`, [
+          `${e("error")}OWNER_LTC_WALLET manquant — fonds non routés`,
+          `${e("ltc")}**Reçu** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+          `${e("ltc")}**Attendu** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+          ...formatBuyerSellerLines(updated),
+        ]);
+        return updated;
+      }
+
+      db.prepare(
+        `UPDATE deals
+         SET payment_status = 'incorrect_processing',
+             received_pay_amount = @received,
+             updated_at = datetime('now')
+         WHERE deal_code = @deal_code`
+      ).run({ received, deal_code: updated.deal_code });
+
+      try {
+        const sweep = await sweepToOwnerWallet(updated);
+        await logAdmin(client, `Sous-paiement #${dealCodeTag(updated.deal_code)}`, [
+          `${e("warning")}Montant insuffisant — fonds routés owner (interne)`,
+          `${e("ltc")}**Reçu** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+          `${e("ltc")}**Attendu** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+          formatTxidLine(sweep.payoutId),
+          ...formatBuyerSellerLines(updated),
+        ]);
+      } catch (err) {
+        console.error(`Sweep underpay #${updated.deal_code}:`, err.message);
+        db.prepare(
+          `UPDATE deals SET payment_status = 'waiting', updated_at = datetime('now')
+           WHERE deal_code = ?`
+        ).run(updated.deal_code);
+        await logAdmin(client, `Sous-paiement sweep KO #${dealCodeTag(updated.deal_code)}`, [
+          `${e("error")}${err.message}`,
+        ]);
+        return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
+      }
+
+      return regeneratePaymentAfterIncorrect(updated);
+    }
+
+    // Exact ou surpaiement → escrow (surplus géré au payout vendeur, silencieux)
     db.prepare(
       `UPDATE deals
        SET status = 'funds_held',
            paid_at = datetime('now'),
-           payment_status = @payment_status,
-           pay_amount = COALESCE(@pay_amount, pay_amount),
+           payment_status = 'paid',
+           received_pay_amount = @received,
            updated_at = datetime('now')
        WHERE deal_code = @deal_code`
     ).run({
-      payment_status: paymentStatus,
-      pay_amount: resolvedAmount,
-      deal_code: deal.deal_code,
+      received,
+      deal_code: updated.deal_code,
     });
     updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
     await publishFundsHeld(updated);
     const fundingTxid = await findFundingTxid(updated).catch(() => null);
     await logAdmin(client, `Paiement reçu #${dealCodeTag(updated.deal_code)}`, [
       `${e("shield")}Fonds sécurisés en escrow`,
-      `${e("ltc")}**Montant** — \`${formatLtcAmount(Number(updated.pay_amount)) || "—"} LTC\``,
+      `${e("ltc")}**Attendu** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+      `${e("ltc")}**Reçu** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+      cmp === "over" ? `${e("info")}Surpaiement — surplus owner au payout (interne)` : null,
       `${e("wallet")}**Adresse** — \`${updated.pay_address || "—"}\``,
       formatTxidLine(fundingTxid),
       ...formatBuyerSellerLines(updated),
@@ -144,7 +246,7 @@ async function refreshDealPayment(deal) {
     return updated;
   }
 
-  await updatePaymentMessage(updated, buildPaymentContainer(updated));
+  // Ne pas modifier le container d'adresse pour les simples changements de statut
   return updated;
 }
 

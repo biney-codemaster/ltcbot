@@ -19,6 +19,11 @@ function validateEnv() {
       "LTC_WALLET_MNEMONIC vide → le bot utilisera / créera wallet.mnemonic (SAUVEGARDE-LE)"
     );
   }
+  if (!String(process.env.OWNER_LTC_WALLET || "").trim()) {
+    warnings.push(
+      "OWNER_LTC_WALLET vide → sous/surpaiements ne pourront pas être routés vers ton wallet"
+    );
+  }
   if (!process.env.ADMIN_LOGS_CHANNEL_ID) {
     warnings.push("ADMIN_LOGS_CHANNEL_ID vide → pas de logs admin / transcripts");
   }
