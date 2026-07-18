@@ -44,16 +44,30 @@ function formatTxBlock(txid) {
   return `${e("info")}**TXID** — \`${id}\``;
 }
 
-/** Note en bas de chaque container de deal ticket. */
-function withStaffFooter(container) {
+/** Note + bouton Staff en bas de chaque container de deal ticket. */
+function withStaffFooter(container, deal) {
+  const dealCode = deal?.deal_code;
   container.addSeparatorComponents(
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
   );
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("staff")}Having an issue? Use \`/staff\` in this channel to ping staff.`
+      `${e("staff")}Having an issue? Click **Staff** below to ping the team.`
     )
   );
+  if (dealCode) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        applyEmoji(
+          new ButtonBuilder()
+            .setCustomId(`deal_staff_ping:${dealCode}`)
+            .setLabel("Staff")
+            .setStyle(ButtonStyle.Secondary),
+          "staff"
+        )
+      )
+    );
+  }
   return container;
 }
 
@@ -107,7 +121,7 @@ function buildRoleSelectionContainer(deal) {
     new ActionRowBuilder().addComponents(customerButton, sellerButton, cancelButton)
   );
 
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildConfirmationContainer(deal) {
@@ -146,7 +160,7 @@ function buildConfirmationContainer(deal) {
     new ActionRowBuilder().addComponents(confirmButton, wrongRolesButton)
   );
 
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildFinalRecapContainer(deal) {
@@ -161,7 +175,7 @@ function buildFinalRecapContainer(deal) {
     )
   );
 
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildPaymentContainer(deal) {
@@ -186,18 +200,7 @@ function buildPaymentContainer(deal) {
     )
   );
 
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(
-      applyEmoji(
-        new ButtonBuilder()
-          .setCustomId(`deal_dispute:${deal.deal_code}`)
-          .setLabel("Open a dispute")
-          .setStyle(ButtonStyle.Danger),
-        "dispute"
-      )
-    )
-  );
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildPaymentSetupErrorContainer(deal, errorMessage) {
@@ -227,7 +230,7 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
   );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(retryButton));
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildPaymentDetectedContainer(deal) {
@@ -246,7 +249,7 @@ function buildPaymentDetectedContainer(deal) {
     )
   );
 
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildPaymentRetryContainer(deal) {
@@ -268,18 +271,7 @@ function buildPaymentRetryContainer(deal) {
     )
   );
 
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(
-      applyEmoji(
-        new ButtonBuilder()
-          .setCustomId(`deal_dispute:${deal.deal_code}`)
-          .setLabel("Open a dispute")
-          .setStyle(ButtonStyle.Danger),
-        "dispute"
-      )
-    )
-  );
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildPaymentFailedContainer(deal, reason) {
@@ -289,7 +281,7 @@ function buildPaymentFailedContainer(deal, reason) {
     new TextDisplayBuilder().setContent(
       `## ${e("error")}Payment not completed\n` +
         `Status: **${reason}**\n\n` +
-        `${e("next")}Generate a new address, or contact staff if funds were already sent.`
+        `${e("next")}Generate a new address, or click **Staff** if funds were already sent.`
     )
   );
 
@@ -301,19 +293,9 @@ function buildPaymentFailedContainer(deal, reason) {
     "payment"
   );
 
-  const disputeButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_dispute:${deal.deal_code}`)
-      .setLabel("Open a dispute")
-      .setStyle(ButtonStyle.Danger),
-    "dispute"
-  );
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(retryButton));
 
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(retryButton, disputeButton)
-  );
-
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildFundsHeldContainer(deal) {
@@ -355,19 +337,11 @@ function buildFundsHeldContainer(deal) {
     "release"
   );
 
-  const disputeButton = applyEmoji(
-    new ButtonBuilder()
-      .setCustomId(`deal_dispute:${deal.deal_code}`)
-      .setLabel("Open a dispute")
-      .setStyle(ButtonStyle.Danger),
-    "dispute"
-  );
-
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(walletButton, releaseButton, disputeButton)
+    new ActionRowBuilder().addComponents(walletButton, releaseButton)
   );
 
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildReleasedContainer(deal) {
@@ -398,7 +372,7 @@ function buildReleasedContainer(deal) {
     new TextDisplayBuilder().setContent(`## ${e("release")}Payout in progress\n${body}`)
   );
 
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildPayoutConfirmedContainer(deal) {
@@ -421,7 +395,7 @@ function buildPayoutConfirmedContainer(deal) {
     )
   );
 
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildReviewRequestContainer(deal) {
@@ -445,7 +419,7 @@ function buildReviewRequestContainer(deal) {
   );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(reviewButton));
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildPublicReviewContainer(deal, { botId } = {}) {
@@ -489,7 +463,7 @@ function buildReviewPostedContainer(deal) {
         `${e("close")}Closing the channel…`
     )
   );
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildDisputeContainer(deal, openedBy) {
@@ -535,7 +509,7 @@ function buildDisputeContainer(deal, openedBy) {
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(releaseButton, refundButton, resolveButton)
   );
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildRefundPendingContainer(deal) {
@@ -559,7 +533,7 @@ function buildRefundPendingContainer(deal) {
     )
   );
 
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 function buildCloseTicketContainer(deal, byUserId, { reason = "cancelled" } = {}) {
@@ -590,7 +564,7 @@ function buildCloseTicketContainer(deal, byUserId, { reason = "cancelled" } = {}
   );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
-  return withStaffFooter(container);
+  return withStaffFooter(container, deal);
 }
 
 module.exports = {

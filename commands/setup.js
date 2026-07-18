@@ -37,7 +37,7 @@ function buildSetupContainer(guildId, howtoChannelId) {
   const container = new ContainerBuilder();
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`# ${e("escrow")}Escrow`)
+    new TextDisplayBuilder().setContent(`# ${e("escrow")}Nestoo - Middleman`)
   );
 
   container.addSeparatorComponents(
@@ -51,10 +51,10 @@ function buildSetupContainer(guildId, howtoChannelId) {
     )
   );
 
-  const rowButtons = [];
+  const startRow = [];
 
   if (emojis.escrow) {
-    rowButtons.push(
+    startRow.push(
       new ButtonBuilder()
         .setCustomId("escrow_deco")
         .setStyle(ButtonStyle.Secondary)
@@ -62,24 +62,26 @@ function buildSetupContainer(guildId, howtoChannelId) {
     );
   }
 
-  rowButtons.push(
+  startRow.push(
     new ButtonBuilder()
       .setCustomId("escrow_start_deal")
       .setLabel("Start a deal")
       .setStyle(ButtonStyle.Secondary)
   );
 
-  // Link button — ouvre le salon directement (icône lien, pas d'éphémère)
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(...startRow));
+
+  // How to use alone on the second row (link button)
   if (howtoChannelId && guildId) {
-    rowButtons.push(
-      new ButtonBuilder()
-        .setLabel("How to use")
-        .setStyle(ButtonStyle.Link)
-        .setURL(`https://discord.com/channels/${guildId}/${howtoChannelId}`)
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel("How to use")
+          .setStyle(ButtonStyle.Link)
+          .setURL(`https://discord.com/channels/${guildId}/${howtoChannelId}`)
+      )
     );
   }
-
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(...rowButtons));
 
   return container;
 }

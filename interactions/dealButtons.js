@@ -295,7 +295,7 @@ async function handleCancelButton(interaction, dealCode) {
   if (deal.status !== "pending_confirmation" || deal.payment_id) {
     return deny(
       interaction,
-      "Cancellation isn't possible after payment generation. Open a dispute or contact staff."
+      "Cancellation isn't possible after payment generation. Click **Staff** if you need help."
     );
   }
 
@@ -977,6 +977,30 @@ async function handleReviewModal(interaction) {
   }
 }
 
+function getStaffRoleId() {
+  const raw = String(config.staffRoleId || process.env.STAFF_ROLE_ID || "").trim();
+  if (!raw) return null;
+  const m = raw.match(/(\d{16,22})/);
+  return m ? m[1] : null;
+}
+
+/** Bouton Staff — ping le rôle staff dans le salon de deal. */
+async function handleStaffPingButton(interaction, dealCode) {
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal not found.");
+
+  const staffRoleId = getStaffRoleId();
+  if (!staffRoleId) {
+    return deny(interaction, "Staff role is not configured (`STAFF_ROLE_ID`).");
+  }
+
+  await interaction.reply({
+    content:
+      `${e("staff")}<@&${staffRoleId}> — <@${interaction.user.id}> needs help with deal #${dealCodeTag(dealCode)}.`,
+    allowedMentions: { parse: [], roles: [staffRoleId], users: [interaction.user.id] },
+  });
+}
+
 async function handleCloseButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal not found.");
@@ -1020,5 +1044,6 @@ module.exports = {
   handleCloseButton,
   handleReviewButton,
   handleReviewModal,
+  handleStaffPingButton,
   getDealByCode,
 };
