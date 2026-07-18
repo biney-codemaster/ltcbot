@@ -14,8 +14,15 @@ function validateEnv() {
   if (!process.env.STAFF_ROLE_ID) {
     warnings.push("STAFF_ROLE_ID empty → staff may lack deal channel access");
   }
-  if (!String(process.env.CUSTOMER_ROLE_ID || "").trim()) {
-    warnings.push("CUSTOMER_ROLE_ID empty → no role assigned after deal reviews");
+  {
+    const raw = String(process.env.CUSTOMER_ROLE_ID || "").trim();
+    if (!raw) {
+      warnings.push("CUSTOMER_ROLE_ID empty → no role assigned after deal reviews");
+    } else if (!/\d{16,22}/.test(raw)) {
+      warnings.push(
+        `CUSTOMER_ROLE_ID invalid ("${raw.slice(0, 32)}") → must be the role snowflake ID`
+      );
+    }
   }
   if (!process.env.LTC_WALLET_MNEMONIC) {
     warnings.push(

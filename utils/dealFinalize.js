@@ -18,7 +18,8 @@ const { e } = config;
 /**
  * After seller review: publish review, public/admin logs, transcript, close channel.
  */
-async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
+async function finalizeDealAfterReview(client, deal, opts = {}) {
+  const { reviewContainer } = opts;
   const dealCode = deal.deal_code;
   const botId = client.user?.id;
 
@@ -59,9 +60,17 @@ async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
 
   const completed = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(dealCode);
 
-  // Silent role for the reviewer (Customer label on reviews = buyer_id)
-  if (completed.buyer_id && completed.guild_id) {
-    await assignCustomerRole(client, completed.guild_id, completed.buyer_id);
+  // Silent role for the reviewer (Customer = buyer_id who leaves the review)
+  const guildId = completed.guild_id || opts.guildId || null;
+  const reviewerId = completed.buyer_id || opts.reviewerId || null;
+  let roleResult = { ok: false, reason: "skipped" };
+  if (reviewerId && guildId) {
+    roleResult = await assignCustomerRole(client, guildId, reviewerId, {
+      guild: opts.guild,
+      member: opts.member,
+    });
+  } else {
+    roleResult = { ok: false, reason: "missing buyer_id or guild_id" };
   }
 
   await logPublicCompleted(client, completed);
@@ -71,6 +80,9 @@ async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
     `${e("ltc")}${formatCryptoAmountLine(completed)}`,
     `${e("confirm")}**Rating** — ${completed.review_rating}/5`,
     `${e("users")}**Anonymous** — ${completed.review_anonymous ? "yes" : "no"}`,
+    roleResult.ok
+      ? `${e("success")}**Customer role** — ${roleResult.reason}`
+      : `${e("warning")}**Customer role** — failed: ${roleResult.reason}`,
     ...formatBuyerSellerLines(completed),
     formatTxidLine(completed.payout_id),
   ]);

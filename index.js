@@ -172,6 +172,31 @@ client.once(Events.ClientReady, async () => {
   } catch (err) {
     console.error("Wallet LTC KO au démarrage:", err.message);
   }
+
+  const customerRoleId = config.getCustomerRoleId();
+  if (!customerRoleId) {
+    console.warn("[roles] CUSTOMER_ROLE_ID not set — reviews will not grant a role");
+  } else if (config.guildId) {
+    try {
+      const guild = await client.guilds.fetch(config.guildId);
+      const role = await guild.roles.fetch(customerRoleId).catch(() => null);
+      const me = guild.members.me || (await guild.members.fetchMe());
+      if (!role) {
+        console.warn(`[roles] CUSTOMER_ROLE_ID=${customerRoleId} not found on guild`);
+      } else if (role.position >= me.roles.highest.position) {
+        console.warn(
+          `[roles] CUSTOMER_ROLE "${role.name}" is above/equal the bot role — move the bot higher in Server Settings → Roles`
+        );
+      } else {
+        console.log(`[roles] CUSTOMER_ROLE ready: ${role.name} (${role.id})`);
+      }
+    } catch (err) {
+      console.warn("[roles] Could not verify CUSTOMER_ROLE_ID:", err.message);
+    }
+  } else {
+    console.log(`[roles] CUSTOMER_ROLE_ID=${customerRoleId}`);
+  }
+
   await probeLogChannels(client);
   startPaymentPoller(client);
   console.log("LTC wallet polling started (5s).");

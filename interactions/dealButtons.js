@@ -959,7 +959,13 @@ async function handleReviewModal(interaction) {
   });
 
   try {
-    await finalizeDealAfterReview(interaction.client, updated, { reviewContainer });
+    await finalizeDealAfterReview(interaction.client, updated, {
+      reviewContainer,
+      guildId: interaction.guildId,
+      reviewerId: interaction.user.id,
+      guild: interaction.guild,
+      member: interaction.member,
+    });
     return interaction.editReply({
       content: `${e("success")}Review saved. The deal is closing — transcript is being sent.`,
     });
