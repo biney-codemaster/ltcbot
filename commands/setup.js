@@ -19,7 +19,12 @@ const data = new SlashCommandBuilder()
   .setDescription("Post the deal panel in this channel")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
 
-function buildSetupContainer() {
+function applyEmoji(button, key) {
+  if (emojis[key]) button.setEmoji(emojis[key]);
+  return button;
+}
+
+function buildSetupContainer(guildId) {
   const container = new ContainerBuilder();
 
   container.addTextDisplayComponents(
@@ -32,8 +37,7 @@ function buildSetupContainer() {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("deal")}Start a secured Litecoin deal.\n` +
-        `${e("info")}Read **How to use** for roles, payment rules, and tips.`
+      `${e("deal")}Start a secured Litecoin deal.`
     )
   );
 
@@ -55,6 +59,19 @@ function buildSetupContainer() {
 
   rowButtons.push(startButton);
 
+  if (config.howtoChannelId && guildId) {
+    const howtoButton = applyEmoji(
+      new ButtonBuilder()
+        .setLabel("How to use")
+        .setStyle(ButtonStyle.Link)
+        .setURL(
+          `https://discord.com/channels/${guildId}/${config.howtoChannelId}`
+        ),
+      "info"
+    );
+    rowButtons.push(howtoButton);
+  }
+
   container.addActionRowComponents(new ActionRowBuilder().addComponents(...rowButtons));
 
   return container;
@@ -68,12 +85,22 @@ async function execute(interaction) {
     });
   }
 
-  await interaction.reply({
-    content: `${e("success")}Panel sent.`,
-    flags: MessageFlags.Ephemeral,
-  });
+  const guildId = interaction.guildId;
+  if (!config.howtoChannelId) {
+    await interaction.reply({
+      content:
+        `${e("success")}Panel sent.\n` +
+        `${e("warning")}Set \`HOWTO_CHANNEL_ID\` in \`.env\` to show the **How to use** link button.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } else {
+    await interaction.reply({
+      content: `${e("success")}Panel sent.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 
-  const container = buildSetupContainer();
+  const container = buildSetupContainer(guildId);
   await interaction.channel.send({
     components: [container],
     flags: MessageFlags.IsComponentsV2,

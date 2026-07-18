@@ -112,6 +112,12 @@ module.exports = {
     "REVIEW_CHANNEL_ID",
     "AVIS_CHANNEL_ID"
   ),
+  /** Salon du panel /howto — bouton lien sur le panel /setup */
+  howtoChannelId: readChannelId(
+    "HOWTO_CHANNEL_ID",
+    "HOW_TO_USE_CHANNEL_ID",
+    "HOWTO_USE_CHANNEL_ID"
+  ),
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages
