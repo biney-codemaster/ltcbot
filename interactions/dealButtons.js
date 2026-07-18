@@ -22,6 +22,7 @@ const {
   buildReleasedContainer,
   buildDisputeContainer,
   buildCloseTicketContainer,
+  buildRefundPendingContainer,
   buildPublicReviewContainer,
 } = require("../utils/dealContainer");
 const {
@@ -703,7 +704,7 @@ async function handleStaffRefundButton(interaction, dealCode) {
 
     db.prepare(
       `UPDATE deals
-       SET status = 'refunded',
+       SET status = 'refunding',
            payout_id = @payout_id,
            payout_status = @payout_status,
            payout_error = NULL,
@@ -718,26 +719,20 @@ async function handleStaffRefundButton(interaction, dealCode) {
     const updated = getDealByCode(dealCode);
 
     await interaction.channel.send({
-      content:
-        `${e("success")}Remboursement acheteur diffusé pour #${dealCodeTag(dealCode)}.\n` +
-        `${e("wallet")}**Adresse détectée** — \`${buyerWallet}\`\n` +
-        `${formatTxidLine(result.payoutId)}`,
-    });
-
-    await interaction.channel.send({
-      components: [buildCloseTicketContainer(updated, interaction.user.id)],
+      components: [buildRefundPendingContainer(updated)],
       flags: MessageFlags.IsComponentsV2,
     });
 
-    await logAdmin(interaction.client, `Remboursement #${dealCodeTag(dealCode)}`, [
-      `${e("money")}Remboursé auto à l'acheteur par <@${interaction.user.id}>`,
+    await logAdmin(interaction.client, `Remboursement diffusé #${dealCodeTag(dealCode)}`, [
+      `${e("money")}Remboursement auto initié par <@${interaction.user.id}>`,
       `${e("wallet")}**Adresse (détectée)** — \`${buyerWallet}\``,
       formatTxidLine(result.payoutId),
       ...formatBuyerSellerLines(updated),
+      `${e("clock")}En attente de confirmation blockchain`,
     ]);
 
     return interaction.editReply({
-      content: `${e("success")}Remboursement initié vers \`${buyerWallet}\`.`,
+      content: `${e("success")}Remboursement initié vers \`${buyerWallet}\` — confirmation en cours.`,
     });
   } catch (err) {
     console.error("Remboursement auto:", err.message);
@@ -825,7 +820,7 @@ async function handleStaffRefundModal(interaction) {
 
     db.prepare(
       `UPDATE deals
-       SET status = 'refunded',
+       SET status = 'refunding',
            payout_id = @payout_id,
            payout_status = @payout_status,
            payout_error = NULL,
@@ -840,26 +835,20 @@ async function handleStaffRefundModal(interaction) {
     const updated = getDealByCode(dealCode);
 
     await interaction.channel.send({
-      content:
-        `${e("success")}Remboursement acheteur diffusé pour #${dealCodeTag(dealCode)}.\n` +
-        `${e("wallet")}**Vers** — \`${buyerWallet}\`\n` +
-        `${formatTxidLine(result.payoutId)}`,
-    });
-
-    await interaction.channel.send({
-      components: [buildCloseTicketContainer(updated, interaction.user.id)],
+      components: [buildRefundPendingContainer(updated)],
       flags: MessageFlags.IsComponentsV2,
     });
 
-    await logAdmin(interaction.client, `Remboursement #${dealCodeTag(dealCode)}`, [
-      `${e("money")}Remboursé à l'acheteur par <@${interaction.user.id}>`,
+    await logAdmin(interaction.client, `Remboursement diffusé #${dealCodeTag(dealCode)}`, [
+      `${e("money")}Remboursement initié par <@${interaction.user.id}>`,
       `${e("wallet")}**Adresse** — \`${buyerWallet}\``,
       formatTxidLine(result.payoutId),
       ...formatBuyerSellerLines(updated),
+      `${e("clock")}En attente de confirmation blockchain`,
     ]);
 
     return interaction.editReply({
-      content: `${e("success")}Remboursement initié.`,
+      content: `${e("success")}Remboursement initié — confirmation en cours.`,
     });
   } catch (err) {
     console.error("Remboursement:", err.message);

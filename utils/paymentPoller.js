@@ -16,6 +16,7 @@ const {
   buildPaymentFailedContainer,
   buildPayoutConfirmedContainer,
   buildReviewRequestContainer,
+  buildCloseTicketContainer,
 } = require("./dealContainer");
 const { MessageFlags } = require("discord.js");
 const { e } = require("../config");
@@ -65,7 +66,7 @@ function getPendingPayoutDeals() {
   return db
     .prepare(
       `SELECT * FROM deals
-       WHERE status = 'released'
+       WHERE status IN ('released', 'refunding')
          AND payout_id IS NOT NULL
          AND payout_id != ''
          AND payout_status IS NOT NULL
@@ -176,6 +177,39 @@ async function refreshDealPayout(deal) {
         const channel = await client.channels.fetch(deal.channel_id);
         if (channel?.isTextBased()) {
           if (newlyConfirmed) {
+            // Remboursement staff → attendre confirm puis container de fermeture
+            if (deal.status === "refunding") {
+              db.prepare(
+                `UPDATE deals
+                 SET status = 'refunded',
+                     payout_status = @payout_status,
+                     updated_at = datetime('now')
+                 WHERE deal_code = @deal_code`
+              ).run({ payout_status: payoutStatus, deal_code: deal.deal_code });
+
+              const refunded = db
+                .prepare("SELECT * FROM deals WHERE deal_code = ?")
+                .get(deal.deal_code);
+
+              await channel.send({
+                components: [
+                  buildCloseTicketContainer(refunded, refunded.mediator_id, {
+                    reason: "refunded",
+                  }),
+                ],
+                flags: MessageFlags.IsComponentsV2,
+              });
+
+              await logAdmin(client, `Remboursement confirmé #${dealCodeTag(deal.deal_code)}`, [
+                `${e("success")}Fonds renvoyés à l'acheteur`,
+                formatTxidLine(deal.payout_id),
+                `${e("wallet")}**Adresse** — \`${deal.buyer_wallet || "—"}\``,
+                ...formatBuyerSellerLines(refunded),
+              ]);
+
+              return refunded;
+            }
+
             db.prepare(
               `UPDATE deals
                SET status = 'awaiting_review',
@@ -214,13 +248,14 @@ async function refreshDealPayout(deal) {
             return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
           }
 
+          const failLabel = deal.status === "refunding" ? "Remboursement" : "Payout";
           await channel.send({
             content:
-              `${e("error")}Payout #${dealCodeTag(deal.deal_code)} échoué — statut **${payoutStatus}**.\n` +
+              `${e("error")}${failLabel} #${dealCodeTag(deal.deal_code)} échoué — statut **${payoutStatus}**.\n` +
               `${formatTxidLine(deal.payout_id) || ""}`,
           }).catch(() => {});
 
-          await logAdmin(client, `Payout échoué #${dealCodeTag(deal.deal_code)}`, [
+          await logAdmin(client, `${failLabel} échoué #${dealCodeTag(deal.deal_code)}`, [
             `${e("error")}Statut **${payoutStatus}**`,
             formatTxidLine(deal.payout_id),
             ...formatBuyerSellerLines(deal),

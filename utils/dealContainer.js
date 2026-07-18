@@ -96,7 +96,6 @@ function buildRoleSelectionContainer(deal) {
 function buildConfirmationContainer(deal) {
   const container = new ContainerBuilder();
   const confirmCount = (deal.initiator_confirmed ? 1 : 0) + (deal.partner_confirmed ? 1 : 0);
-  addTitleOnly(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -135,7 +134,6 @@ function buildConfirmationContainer(deal) {
 
 function buildFinalRecapContainer(deal) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -151,7 +149,6 @@ function buildFinalRecapContainer(deal) {
 
 function buildPaymentContainer(deal) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const address = deal.pay_address || "*adresse en cours de génération*";
@@ -186,7 +183,6 @@ function buildPaymentContainer(deal) {
 
 function buildPaymentSetupErrorContainer(deal, errorMessage) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   const isMin =
     /montant trop|too small|minimum|frais réseau|DUST|solde trop bas/i.test(
@@ -217,7 +213,6 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
 
 function buildPaymentFailedContainer(deal, reason) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -252,7 +247,6 @@ function buildPaymentFailedContainer(deal, reason) {
 
 function buildFundsHeldContainer(deal) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   const walletLine = deal.seller_wallet
     ? `${e("wallet")}**Adresse vendeur** — \`${deal.seller_wallet}\``
@@ -307,7 +301,6 @@ function buildFundsHeldContainer(deal) {
 
 function buildReleasedContainer(deal) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   const wallet = deal.seller_wallet || "—";
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
@@ -338,7 +331,6 @@ function buildReleasedContainer(deal) {
 
 function buildPayoutConfirmedContainer(deal) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   const wallet = deal.seller_wallet || "—";
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
@@ -361,7 +353,6 @@ function buildPayoutConfirmedContainer(deal) {
 
 function buildReviewRequestContainer(deal) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -417,7 +408,6 @@ function buildPublicReviewContainer(deal, { botId } = {}) {
 
 function buildReviewPostedContainer(deal) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -431,7 +421,6 @@ function buildReviewPostedContainer(deal) {
 
 function buildDisputeContainer(deal, openedBy) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -476,17 +465,48 @@ function buildDisputeContainer(deal, openedBy) {
   return container;
 }
 
-function buildCloseTicketContainer(deal, cancelledBy) {
+/** Remboursement diffusé — en attente de confirmation blockchain. */
+function buildRefundPendingContainer(deal) {
   const container = new ContainerBuilder();
-  addTitleOnly(container, deal);
+  const wallet = deal.buyer_wallet || "—";
+  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
+  const crypto = deal.crypto || "LTC";
+  const txBlock = formatTxBlock(deal.payout_id);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("cancel")}Deal annulé\n` +
-        `Annulé par <@${cancelledBy}>.\n\n` +
-        `${e("staff")}Un membre du staff doit fermer ce salon.`
+      `## ${e("money")}Remboursement en cours\n` +
+        `${e("success")}Remboursement acheteur diffusé sur Litecoin.\n\n` +
+        `${e("buyer")}**Acheteur** — <@${deal.buyer_id}>\n` +
+        `${e("wallet")}**Adresse** — \`${wallet}\`\n` +
+        `${e("ltc")}**Montant** — \`${amount} ${crypto}\`\n` +
+        `${e("clock")}**Statut** — ${statusLabel(deal.payout_status || "processing")}\n` +
+        (txBlock ? `${txBlock}\n` : "") +
+        `\n${e("clock")}Confirmation blockchain…`
     )
   );
+
+  return container;
+}
+
+function buildCloseTicketContainer(deal, byUserId, { reason = "cancelled" } = {}) {
+  const container = new ContainerBuilder();
+
+  let body;
+  if (reason === "refunded") {
+    body =
+      `## ${e("success")}Remboursement confirmé\n` +
+      `${e("money")}Les fonds ont été renvoyés à l'acheteur.\n` +
+      (byUserId ? `Traité par <@${byUserId}>.\n\n` : "\n") +
+      `${e("staff")}Un membre du staff peut fermer ce salon.`;
+  } else {
+    body =
+      `## ${e("cancel")}Deal annulé\n` +
+      (byUserId ? `Annulé par <@${byUserId}>.\n\n` : "\n") +
+      `${e("staff")}Un membre du staff doit fermer ce salon.`;
+  }
+
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
 
   const closeButton = applyEmoji(
     new ButtonBuilder()
@@ -514,6 +534,7 @@ module.exports = {
   buildPublicReviewContainer,
   buildReviewPostedContainer,
   buildDisputeContainer,
+  buildRefundPendingContainer,
   buildCloseTicketContainer,
   formatTxBlock,
 };
