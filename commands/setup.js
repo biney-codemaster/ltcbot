@@ -46,7 +46,8 @@ function buildSetupContainer(guildId, howtoChannelId) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("deal")}Start a secured Litecoin deal.`
+      `${e("deal")}Start a secured deal.\n` +
+        `${e("money")}**0 service fees** — only network fees apply.`
     )
   );
 
