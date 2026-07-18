@@ -18,6 +18,7 @@ const setupCommand = require("./commands/setup");
 const anonymousCommand = require("./commands/anonymous");
 const statsCommand = require("./commands/stats");
 const howtoCommand = require("./commands/howto");
+const staffCommand = require("./commands/staff");
 const { handleDealModal } = require("./interactions/dealModal");
 const { ensurePrefsTable } = require("./utils/userPrefs");
 const {
@@ -66,6 +67,7 @@ const commands = [
   anonymousCommand.data.toJSON(),
   statsCommand.data.toJSON(),
   howtoCommand.data.toJSON(),
+  staffCommand.data.toJSON(),
 ];
 
 async function registerCommands() {
@@ -218,6 +220,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand() && interaction.commandName === "howto") {
       await howtoCommand.execute(interaction);
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === "staff") {
+      await staffCommand.execute(interaction);
     }
 
     if (interaction.isButton() && interaction.customId === "escrow_start_deal") {

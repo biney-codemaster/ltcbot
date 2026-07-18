@@ -74,6 +74,7 @@ function buildHowtoContainer() {
       `## ${e("info")}Commands\n` +
         `\`/setup\` — post the deal start panel *(staff)*\n` +
         `\`/howto\` — post this guide *(staff)*\n` +
+        `\`/staff\` — ping staff *(deal channels only)*\n` +
         `\`/anonymous\` — hide or show your profile in reviews & public logs\n` +
         `\`/stats\` — view your detailed deal statistics\n` +
         `\`/stats user:@someone\` — view another user's stats`
@@ -90,6 +91,7 @@ function buildHowtoContainer() {
         `• Use \`/anonymous\` before the review if you want to stay private\n` +
         `• Only the **seller** can set the withdrawal address\n` +
         `• Open a **dispute** in the ticket if something goes wrong — staff can release or refund\n` +
+        `• Need help in a deal? Use \`/staff\` to ping the staff role\n` +
         `• Keep your transcript HTML as proof after the deal closes`
     )
   );
