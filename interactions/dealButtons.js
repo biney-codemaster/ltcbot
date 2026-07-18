@@ -73,7 +73,7 @@ function deny(interaction, message) {
 /** Acheteur (ou staff). */
 function denyUnlessBuyer(interaction, deal) {
   if (isBuyer(deal, interaction.user.id) || isStaff(interaction.member)) return null;
-  return deny(interaction, "Only the **seller** can use this button.");
+  return deny(interaction, "Only the **customer** can use this button.");
 }
 
 /** Vendeur (ou staff). L'acheteur est TOUJOURS refusé pour l'adresse de retrait. */
@@ -82,11 +82,11 @@ function denyUnlessSeller(interaction, deal) {
   if (isBuyer(deal, uid) && !isSeller(deal, uid)) {
     return deny(
       interaction,
-      "⛔ The **seller** cannot add or change the customer's address."
+      "⛔ The **customer** cannot add or change the seller's address."
     );
   }
   if (isSeller(deal, uid) || isStaff(interaction.member)) return null;
-  return deny(interaction, "Only the **customer** can use this button.");
+  return deny(interaction, "Only the **seller** can use this button.");
 }
 
 /** Réservé strictement au vendeur (pas le staff à la place du vendeur pour l'adresse). */
@@ -95,13 +95,13 @@ function denyUnlessSellerOnly(interaction, deal) {
   if (isBuyer(deal, uid)) {
     return deny(
       interaction,
-      "⛔ The **seller** cannot add or change the customer's address."
+      "⛔ The **customer** cannot add or change the seller's address."
     );
   }
   if (!isSeller(deal, uid)) {
     return deny(
       interaction,
-      "Only this deal's **customer** can set or change this address."
+      "Only this deal's **seller** can set or change this address."
     );
   }
   return null;
@@ -411,7 +411,7 @@ async function handleReleaseButton(interaction, dealCode) {
   if (!deal.seller_wallet) {
     return deny(
       interaction,
-      "The customer must first set their LTC address (Customer address button)."
+      "The seller must first set their LTC address (Seller address button)."
     );
   }
 
@@ -452,14 +452,14 @@ async function handleReleaseButton(interaction, dealCode) {
     });
 
     await logAdmin(interaction.client, `Payout broadcast #${dealCodeTag(dealCode)}`, [
-      `${e("release")}Transaction broadcast to customer`,
+      `${e("release")}Transaction broadcast to seller`,
       formatTxidLine(result.payoutId),
       `${e("wallet")}**To** — \`${deal.seller_wallet}\``,
       ...formatBuyerSellerLines(deal),
     ]);
 
     return interaction.editReply({
-      content: `${e("success")}Payout started to the customer.`,
+      content: `${e("success")}Payout started to the seller.`,
     });
   } catch (err) {
     console.error("Payout vendeur:", err.message);
@@ -507,7 +507,7 @@ async function handleSellerWalletButton(interaction, dealCode) {
   }
 
   const walletLabel = new LabelBuilder()
-    .setLabel("Customer's Litecoin address")
+    .setLabel("Seller's Litecoin address")
     .setTextInputComponent(walletInput);
 
   modal.addLabelComponents(walletLabel);
@@ -623,7 +623,7 @@ async function handleStaffReleaseButton(interaction, dealCode) {
     return deny(interaction, "Staff release isn't possible at this stage.");
   }
   if (!deal.seller_wallet) {
-    return deny(interaction, "The customer must have an LTC address first.");
+    return deny(interaction, "The seller must have an LTC address first.");
   }
 
   // Réutilise la logique release
@@ -769,7 +769,7 @@ async function handleStaffRefundManualButton(interaction, dealCode) {
 
   const modal = new ModalBuilder()
     .setCustomId(`deal_staff_refund_modal:${dealCode}`)
-    .setTitle("Refund seller");
+    .setTitle("Refund customer");
 
   const walletInput = new TextInputBuilder()
     .setCustomId("buyer_wallet")
@@ -781,7 +781,7 @@ async function handleStaffRefundManualButton(interaction, dealCode) {
 
   modal.addLabelComponents(
     new LabelBuilder()
-      .setLabel("Seller's LTC address")
+      .setLabel("Customer's LTC address")
       .setTextInputComponent(walletInput)
   );
   await interaction.showModal(modal);

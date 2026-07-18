@@ -329,7 +329,7 @@ async function refreshDealPayout(deal) {
               });
 
               await logAdmin(client, `Refund confirmed #${dealCodeTag(deal.deal_code)}`, [
-                `${e("success")}Funds returned to seller`,
+                `${e("success")}Funds returned to customer`,
                 formatTxidLine(deal.payout_id),
                 `${e("wallet")}**Adresse** — \`${deal.buyer_wallet || "—"}\``,
                 ...formatBuyerSellerLines(refunded),
@@ -366,11 +366,11 @@ async function refreshDealPayout(deal) {
             }
 
             await logAdmin(client, `Payout confirmed #${dealCodeTag(deal.deal_code)}`, [
-              `${e("success")}Funds sent to customer`,
+              `${e("success")}Funds sent to seller`,
               formatTxidLine(deal.payout_id),
               `${e("wallet")}**Adresse** — \`${deal.seller_wallet || "—"}\``,
               ...formatBuyerSellerLines(confirmed),
-              `${e("next")}Waiting for seller review`,
+              `${e("next")}Waiting for customer review`,
             ]);
 
             return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);

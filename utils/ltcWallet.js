@@ -385,7 +385,7 @@ function buildSplitTransaction(
     throw new Error("Split payout incohérent (somme ≠ total)");
   }
   if (sellerValue <= DUST_LITOSHIS) {
-    throw new Error("Customer amount too low (dust)");
+    throw new Error("Seller amount too low (dust)");
   }
   if (ownerValue <= DUST_LITOSHIS) {
     throw new Error("Reste owner trop bas (dust)");
@@ -550,7 +550,7 @@ async function findBuyerRefundAddress(deal) {
 
   if (scores.size === 0) {
     throw new Error(
-      "Could not determine the seller refund address (no readable sender in txs)"
+      "Could not determine the customer refund address (no readable sender in txs)"
     );
   }
 
@@ -564,7 +564,7 @@ async function findBuyerRefundAddress(deal) {
   }
 
   if (!best || !isValidLtcAddress(best)) {
-    throw new Error("Detected seller address is invalid");
+    throw new Error("Detected customer address is invalid");
   }
 
   return { address: best, escrow, scoreLitoshis: bestScore };
@@ -667,7 +667,7 @@ async function sweepDealToAddress(deal, toAddress) {
  */
 async function payoutToSeller(deal) {
   if (!deal.seller_wallet) {
-    throw new Error("Customer LTC address missing");
+    throw new Error("Seller LTC address missing");
   }
   const seller = deal.seller_wallet.trim();
   const owner = getOwnerLtcWallet();

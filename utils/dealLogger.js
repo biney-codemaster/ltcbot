@@ -52,8 +52,8 @@ function formatTxidLine(txid, { emoji = true } = {}) {
 
 function formatBuyerSellerLines(deal) {
   return [
-    `${e("buyer")}**Seller** — <@${deal.buyer_id || "?"}>`,
-    `${e("seller")}**Customer** — <@${deal.seller_id || "?"}>`,
+    `${e("buyer")}**Customer** — <@${deal.buyer_id || "?"}>`,
+    `${e("seller")}**Seller** — <@${deal.seller_id || "?"}>`,
   ];
 }
 
@@ -186,10 +186,10 @@ async function logPublicCompleted(client, deal) {
   const crypto = deal.crypto || "LTC";
   const when = discordTimestamp(deal.completed_at || deal.review_at || deal.updated_at);
 
-  // Seller (payer / buyer_id) + Customer (receiver / seller_id) — both honor /anonymous
-  const sellerAnon =
+  // Customer (payer/reviewer / buyer_id) + Seller (receiver / seller_id) — both honor /anonymous
+  const customerAnon =
     Boolean(deal.review_anonymous) || isUserAnonymous(deal.buyer_id);
-  const customerAnon = isUserAnonymous(deal.seller_id);
+  const sellerAnon = isUserAnonymous(deal.seller_id);
   const txLine = formatTxidLine(deal.payout_id);
 
   const container = new ContainerBuilder();
@@ -203,8 +203,8 @@ async function logPublicCompleted(client, deal) {
     new TextDisplayBuilder().setContent(
       `## ${e("ltc")}${crypto}\n` +
         `${formatCryptoAmountLine(deal)}\n\n` +
-        `${e("buyer")}**Seller** — ${formatAuthor(deal.buyer_id, { anonymous: sellerAnon })}\n` +
-        `${e("seller")}**Customer** — ${formatAuthor(deal.seller_id, { anonymous: customerAnon })}\n` +
+        `${e("buyer")}**Customer** — ${formatAuthor(deal.buyer_id, { anonymous: customerAnon })}\n` +
+        `${e("seller")}**Seller** — ${formatAuthor(deal.seller_id, { anonymous: sellerAnon })}\n` +
         (txLine ? `\n${txLine}\n` : "\n") +
         `\n${e("clock")}${when}`
     )

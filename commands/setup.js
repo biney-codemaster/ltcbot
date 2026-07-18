@@ -32,14 +32,14 @@ function buildSetupContainer() {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("shield")}Trusted middleman between **seller** and **customer**.\n` +
+      `${e("shield")}Trusted middleman between **customer** and **seller**.\n` +
         `Funds are secured on a **dedicated Litecoin address** until delivery is confirmed.\n\n` +
         `${e("money")}**0 service fees** — only Litecoin **network fees** apply.\n\n` +
         `## ${e("info")}How it works\n` +
         `1. Create a deal and private channel\n` +
-        `2. Choose roles (seller / customer)\n` +
+        `2. Choose roles (customer / seller)\n` +
         `3. Mutual confirmation of terms\n` +
-        `4. LTC payment then release to the customer\n\n` +
+        `4. LTC payment then release to the seller\n\n` +
         `${e("lock")}**Anonymity** — use \`/anonymous\` to appear anonymous (or not) in reviews and public logs.`
     )
   );

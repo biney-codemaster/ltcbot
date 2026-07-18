@@ -147,8 +147,8 @@ async function handleDealModal(interaction) {
     `${e("product")}**Product** — ${product}`,
     `${e("money")}**Price** — ${price}${currency}`,
     `${e("users")}Participants — <@${interaction.user.id}> ↔ <@${partnerId}>`,
-    `${e("buyer")}**Seller** — *to be set*`,
-    `${e("seller")}**Customer** — *to be set*`,
+    `${e("buyer")}**Customer** — *to be set*`,
+    `${e("seller")}**Seller** — *to be set*`,
   ]);
 }
 

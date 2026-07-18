@@ -15,9 +15,9 @@ const { dealCodeTag, formatCryptoAmountLine, discordTimestamp } = require("./dea
 
 const { e, emojis } = config;
 
-/** UI labels: buyer_id → Seller, seller_id → Customer */
-const ROLE_PAYER = "Seller";
-const ROLE_RECEIVER = "Customer";
+/** UI labels: buyer_id (payer/reviewer) → Customer, seller_id (receiver) → Seller */
+const ROLE_PAYER = "Customer";
+const ROLE_RECEIVER = "Seller";
 
 function applyEmoji(button, key) {
   if (emojis[key]) button.setEmoji(emojis[key]);
@@ -50,8 +50,8 @@ function buildRoleSelectionContainer(deal) {
 
   const crypto = deal.crypto || "LTC";
   const amount = formatLtcAmount(Number(deal.pay_amount));
-  const sellerLabel = deal.buyer_id ? `<@${deal.buyer_id}>` : "*pending*";
-  const customerLabel = deal.seller_id ? `<@${deal.seller_id}>` : "*pending*";
+  const customerLabel = deal.buyer_id ? `<@${deal.buyer_id}>` : "*pending*";
+  const sellerLabel = deal.seller_id ? `<@${deal.seller_id}>` : "*pending*";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -60,13 +60,13 @@ function buildRoleSelectionContainer(deal) {
         (amount ? `\n${e("ltc")}**${crypto}** — \`${amount} ${crypto}\`` : "") +
         `\n\n## ${e("roles")}Choose your role\n` +
         `Each participant clicks **${ROLE_PAYER}** or **${ROLE_RECEIVER}**.\n\n` +
-        `${e("buyer")}**${ROLE_PAYER}** — ${sellerLabel}\n` +
-        `${e("seller")}**${ROLE_RECEIVER}** — ${customerLabel}\n\n` +
+        `${e("buyer")}**${ROLE_PAYER}** — ${customerLabel}\n` +
+        `${e("seller")}**${ROLE_RECEIVER}** — ${sellerLabel}\n\n` +
         `${e("lock")}Anonymity in reviews / public logs: \`/anonymous\``
     )
   );
 
-  const sellerButton = applyEmoji(
+  const customerButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_role:BUYER:${deal.deal_code}`)
       .setLabel(ROLE_PAYER)
@@ -74,7 +74,7 @@ function buildRoleSelectionContainer(deal) {
     "buyer"
   );
 
-  const customerButton = applyEmoji(
+  const sellerButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_role:SELLER:${deal.deal_code}`)
       .setLabel(ROLE_RECEIVER)
@@ -91,7 +91,7 @@ function buildRoleSelectionContainer(deal) {
   );
 
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(sellerButton, customerButton, cancelButton)
+    new ActionRowBuilder().addComponents(customerButton, sellerButton, cancelButton)
   );
 
   return container;
@@ -307,8 +307,8 @@ function buildFundsHeldContainer(deal) {
   const container = new ContainerBuilder();
 
   const walletLine = deal.seller_wallet
-    ? `${e("wallet")}**Customer address** — \`${deal.seller_wallet}\``
-    : `${e("warning")}**Customer address** — required (**customer only**)`;
+    ? `${e("wallet")}**Seller address** — \`${deal.seller_wallet}\``
+    : `${e("warning")}**Seller address** — required (**seller only**)`;
 
   const payoutErrorLine = deal.payout_error
     ? `\n\n${e("error")}**Last payout failed** — \`${deal.payout_error}\``
@@ -328,7 +328,7 @@ function buildFundsHeldContainer(deal) {
   const walletButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
-      .setLabel(deal.seller_wallet ? "Update address (customer)" : "Customer address")
+      .setLabel(deal.seller_wallet ? "Update address (seller)" : "Seller address")
       .setStyle(ButtonStyle.Secondary),
     "wallet"
   );
@@ -404,7 +404,7 @@ function buildPayoutConfirmedContainer(deal) {
         `${e("wallet")}**Address** — \`${wallet}\`\n` +
         `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
         (txBlock ? `${txBlock}\n\n` : "\n") +
-        `${e("next")}The seller leaves a review to close the deal.`
+        `${e("next")}The customer leaves a review to close the deal.`
     )
   );
 
@@ -488,8 +488,8 @@ function buildDisputeContainer(deal, openedBy) {
         `Opened by <@${openedBy}>.\n\n` +
         `**Reason**\n${deal.dispute_reason || "*not specified*"}\n\n` +
         `${e("staff")}Staff actions:\n` +
-        `• **Release to customer**\n` +
-        `• **Refund seller**\n` +
+        `• **Release to seller**\n` +
+        `• **Refund customer**\n` +
         `• **Close** without transfer`
     )
   );
@@ -497,7 +497,7 @@ function buildDisputeContainer(deal, openedBy) {
   const releaseButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_staff_release:${deal.deal_code}`)
-      .setLabel("Release to customer")
+      .setLabel("Release to seller")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!deal.seller_wallet),
     "release"
@@ -506,7 +506,7 @@ function buildDisputeContainer(deal, openedBy) {
   const refundButton = applyEmoji(
     new ButtonBuilder()
       .setCustomId(`deal_staff_refund:${deal.deal_code}`)
-      .setLabel("Refund seller")
+      .setLabel("Refund customer")
       .setStyle(ButtonStyle.Primary),
     "money"
   );
@@ -536,8 +536,8 @@ function buildRefundPendingContainer(deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("money")}Refund in progress\n` +
-        `${e("success")}Seller refund broadcast on Litecoin.\n\n` +
-        `${e("buyer")}**Seller** — <@${deal.buyer_id}>\n` +
+        `${e("success")}Customer refund broadcast on Litecoin.\n\n` +
+        `${e("buyer")}**Customer** — <@${deal.buyer_id}>\n` +
         `${e("wallet")}**Address** — \`${wallet}\`\n` +
         `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
         `${e("clock")}**Status** — ${statusLabel(deal.payout_status || "processing")}\n` +
@@ -556,7 +556,7 @@ function buildCloseTicketContainer(deal, byUserId, { reason = "cancelled" } = {}
   if (reason === "refunded") {
     body =
       `## ${e("success")}Refund confirmed\n` +
-      `${e("money")}Funds were returned to the seller.\n` +
+      `${e("money")}Funds were returned to the customer.\n` +
       (byUserId ? `Handled by <@${byUserId}>.\n\n` : "\n") +
       `${e("staff")}A staff member can close this channel.`;
   } else {

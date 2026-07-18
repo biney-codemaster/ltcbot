@@ -43,42 +43,30 @@ function avgRating(rows) {
 }
 
 function gatherStats(userId) {
-  const asSeller = db
+  // buyer_id = Customer (pays), seller_id = Seller (receives)
+  const asCustomer = db
     .prepare(
       `SELECT * FROM deals WHERE buyer_id = ? ORDER BY created_at DESC`
     )
     .all(userId);
-  const asCustomer = db
+  const asSeller = db
     .prepare(
       `SELECT * FROM deals WHERE seller_id = ? ORDER BY created_at DESC`
     )
     .all(userId);
 
   const allCodes = new Set([
-    ...asSeller.map((d) => d.deal_code),
     ...asCustomer.map((d) => d.deal_code),
+    ...asSeller.map((d) => d.deal_code),
   ]);
 
-  const completedSeller = asSeller.filter((d) => d.status === "completed");
   const completedCustomer = asCustomer.filter((d) => d.status === "completed");
+  const completedSeller = asSeller.filter((d) => d.status === "completed");
 
   return {
-    asSeller,
     asCustomer,
+    asSeller,
     totalUnique: allCodes.size,
-    seller: {
-      total: asSeller.length,
-      completed: countByStatus(asSeller, "completed"),
-      awaitingPayment: countByStatus(asSeller, "awaiting_payment"),
-      fundsHeld: countByStatus(asSeller, "funds_held"),
-      released: countByStatus(asSeller, "released"),
-      disputed: countByStatus(asSeller, "disputed"),
-      refunded: countByStatus(asSeller, "refunded") + countByStatus(asSeller, "refunding"),
-      cancelled: countByStatus(asSeller, "cancelled"),
-      volumeLtc: sumLtc(completedSeller),
-      avgRatingGiven: avgRating(completedSeller),
-      reviewsGiven: completedSeller.filter((d) => d.review_at).length,
-    },
     customer: {
       total: asCustomer.length,
       completed: countByStatus(asCustomer, "completed"),
@@ -89,6 +77,19 @@ function gatherStats(userId) {
       refunded: countByStatus(asCustomer, "refunded") + countByStatus(asCustomer, "refunding"),
       cancelled: countByStatus(asCustomer, "cancelled"),
       volumeLtc: sumLtc(completedCustomer),
+      avgRatingGiven: avgRating(completedCustomer),
+      reviewsGiven: completedCustomer.filter((d) => d.review_at).length,
+    },
+    seller: {
+      total: asSeller.length,
+      completed: countByStatus(asSeller, "completed"),
+      awaitingPayment: countByStatus(asSeller, "awaiting_payment"),
+      fundsHeld: countByStatus(asSeller, "funds_held"),
+      released: countByStatus(asSeller, "released"),
+      disputed: countByStatus(asSeller, "disputed"),
+      refunded: countByStatus(asSeller, "refunded") + countByStatus(asSeller, "refunding"),
+      cancelled: countByStatus(asSeller, "cancelled"),
+      volumeLtc: sumLtc(completedSeller),
     },
   };
 }
@@ -139,7 +140,7 @@ function buildStatsContainer(user, stats) {
   );
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(roleBlock("As seller (pays LTC)", "buyer", stats.seller))
+    new TextDisplayBuilder().setContent(roleBlock("As customer (pays LTC)", "buyer", stats.customer))
   );
 
   container.addSeparatorComponents(
@@ -148,7 +149,7 @@ function buildStatsContainer(user, stats) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      roleBlock("As customer (receives LTC)", "seller", stats.customer)
+      roleBlock("As seller (receives LTC)", "seller", stats.seller)
     )
   );
 
