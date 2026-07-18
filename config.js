@@ -91,20 +91,22 @@ function getHowtoChannelId() {
   );
 }
 
+/** Role given silently after a completed deal review (live read). */
+function getCustomerRoleId() {
+  const raw = String(process.env.CUSTOMER_ROLE_ID || "").trim();
+  if (!raw) return null;
+  const m = raw.match(/(\d{16,22})/);
+  return m ? m[1] : null;
+}
+
 module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.CLIENT_ID,
   guildId: process.env.GUILD_ID, // pour enregistrer les commandes en dev (instant), sinon global
   staffRoleId: process.env.STAFF_ROLE_ID, // rôle staff/médiateur ayant accès aux salons de deal
-  /** Role given silently after a completed deal review (live read). */
-  getCustomerRoleId() {
-    const raw = String(process.env.CUSTOMER_ROLE_ID || "").trim();
-    if (!raw) return null;
-    const m = raw.match(/(\d{16,22})/);
-    return m ? m[1] : null;
-  },
+  getCustomerRoleId,
   get customerRoleId() {
-    return this.getCustomerRoleId();
+    return getCustomerRoleId();
   },
   /** Seed BIP39 du wallet HD escrow (sinon fichier wallet.mnemonic auto-créé). */
   ltcWalletMnemonic: (process.env.LTC_WALLET_MNEMONIC || "").trim() || null,

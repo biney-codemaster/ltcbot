@@ -175,11 +175,14 @@ client.once(Events.ClientReady, async () => {
     console.error("Wallet LTC KO au démarrage:", err.message);
   }
 
-  const customerRoleId = config.getCustomerRoleId();
-  if (!customerRoleId) {
-    console.warn("[roles] CUSTOMER_ROLE_ID not set — reviews will not grant a role");
-  } else if (config.guildId) {
-    try {
+  try {
+    const customerRoleId =
+      typeof config.getCustomerRoleId === "function"
+        ? config.getCustomerRoleId()
+        : config.customerRoleId || null;
+    if (!customerRoleId) {
+      console.warn("[roles] CUSTOMER_ROLE_ID not set — reviews will not grant a role");
+    } else if (config.guildId) {
       const guild = await client.guilds.fetch(config.guildId);
       const role = await guild.roles.fetch(customerRoleId).catch(() => null);
       const me = guild.members.me || (await guild.members.fetchMe());
@@ -192,11 +195,11 @@ client.once(Events.ClientReady, async () => {
       } else {
         console.log(`[roles] CUSTOMER_ROLE ready: ${role.name} (${role.id})`);
       }
-    } catch (err) {
-      console.warn("[roles] Could not verify CUSTOMER_ROLE_ID:", err.message);
+    } else {
+      console.log(`[roles] CUSTOMER_ROLE_ID=${customerRoleId}`);
     }
-  } else {
-    console.log(`[roles] CUSTOMER_ROLE_ID=${customerRoleId}`);
+  } catch (err) {
+    console.warn("[roles] Could not verify CUSTOMER_ROLE_ID:", err.message);
   }
 
   await probeLogChannels(client);

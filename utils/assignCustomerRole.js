@@ -6,7 +6,10 @@ const config = require("../config");
  * Prefers interaction guild/member when provided (more reliable than re-fetch).
  */
 async function assignCustomerRole(client, guildId, userId, opts = {}) {
-  const roleId = config.getCustomerRoleId();
+  const roleId =
+    typeof config.getCustomerRoleId === "function"
+      ? config.getCustomerRoleId()
+      : config.customerRoleId || null;
   if (!roleId) {
     console.warn(
       "[roles] CUSTOMER_ROLE_ID missing/empty — skip role assignment after review"
