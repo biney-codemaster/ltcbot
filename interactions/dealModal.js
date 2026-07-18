@@ -5,7 +5,7 @@ const { generateUniqueDealCode } = require("../utils/dealCode");
 const { buildRoleSelectionContainer } = require("../utils/dealContainer");
 const { fiatToLtc } = require("../utils/ltcPrice");
 const { MessageFlags } = require("discord.js");
-const { logAdmin } = require("../utils/dealLogger");
+const { logAdmin, dealCodeTag } = require("../utils/dealLogger");
 const { e } = config;
 
 const CURRENCY_MAP = {
@@ -138,15 +138,17 @@ async function handleDealModal(interaction) {
   });
 
   await interaction.reply({
-    content: `${e("success")}Deal #${dealCode} créé. Rendez-vous dans ${channel} pour continuer.`,
+    content: `${e("success")}Deal #${dealCodeTag(dealCode)} créé. Rendez-vous dans ${channel} pour continuer.`,
     flags: MessageFlags.Ephemeral,
   });
 
-  await logAdmin(interaction.client, `Deal créé #${dealCode}`, [
+  await logAdmin(interaction.client, `Deal créé #${dealCodeTag(dealCode)}`, [
     `${e("deal")}Salon ${channel}`,
     `${e("product")}**Produit** — ${product}`,
     `${e("money")}**Prix** — ${price}${currency}`,
-    `${e("users")}<@${interaction.user.id}> ↔ <@${partnerId}>`,
+    `${e("users")}Participants — <@${interaction.user.id}> ↔ <@${partnerId}>`,
+    `${e("buyer")}**Acheteur** — *à définir*`,
+    `${e("seller")}**Vendeur** — *à définir*`,
   ]);
 }
 

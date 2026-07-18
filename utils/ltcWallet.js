@@ -647,6 +647,37 @@ function isPayoutFailedStatus(status) {
   return PAYOUT_FAIL.has(status);
 }
 
+function getExplorerTxUrl(txid) {
+  return `https://litecoinspace.org/tx/${txid}`;
+}
+
+/** TXID du paiement entrant (acheteur → escrow), si disponible. */
+async function findFundingTxid(deal) {
+  const escrow =
+    deal.pay_address ||
+    (deal.wallet_index != null || deal.payment_id
+      ? addressFromIndex(
+          deal.wallet_index != null
+            ? Number(deal.wallet_index)
+            : parsePaymentId(deal.payment_id)
+        ).address
+      : null);
+  if (!escrow) return null;
+  try {
+    const txs = await explorerGet(`/address/${encodeURIComponent(escrow)}/txs`);
+    if (!Array.isArray(txs)) return null;
+    for (const tx of txs) {
+      const hits = (tx.vout || []).some(
+        (o) => o.scriptpubkey_address === escrow && Number(o.value) > 0
+      );
+      if (hits && tx.txid) return String(tx.txid);
+    }
+  } catch (err) {
+    console.warn("findFundingTxid:", err.message);
+  }
+  return null;
+}
+
 module.exports = {
   createLtcPayment,
   assertAboveMinAmount,
@@ -655,6 +686,7 @@ module.exports = {
   payoutToSeller,
   refundToBuyer,
   findBuyerRefundAddress,
+  findFundingTxid,
   sweepDealToAddress,
   resolvePayoutAmount,
   statusLabel,
@@ -668,5 +700,6 @@ module.exports = {
   pingWallet,
   loadOrCreateMnemonic,
   addressFromIndex,
+  getExplorerTxUrl,
   LTC_MIN_AMOUNT: 0,
 };

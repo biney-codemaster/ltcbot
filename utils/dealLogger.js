@@ -8,15 +8,53 @@ const {
 const config = require("../config");
 const { formatLtcAmount } = require("./ltcPrice");
 const { isUserAnonymous, formatAuthor } = require("./userPrefs");
+const { getExplorerTxUrl } = require("./ltcWallet");
 
 const { e } = config;
 
-function formatWhen(isoOrSqlite) {
-  if (!isoOrSqlite) return "—";
+function parseDate(isoOrSqlite) {
+  if (!isoOrSqlite) return null;
+  if (isoOrSqlite instanceof Date) {
+    return Number.isNaN(isoOrSqlite.getTime()) ? null : isoOrSqlite;
+  }
   const raw = String(isoOrSqlite);
   const d = new Date(raw.includes("T") ? raw : `${raw.replace(" ", "T")}Z`);
-  if (Number.isNaN(d.getTime())) return raw;
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Timestamp Discord localisé selon le client (`f` = date+heure). */
+function discordTimestamp(isoOrSqlite, style = "f") {
+  const d = parseDate(isoOrSqlite) || new Date();
+  return `<t:${Math.floor(d.getTime() / 1000)}:${style}>`;
+}
+
+/** Ancien format texte (transcript HTML / fallback). */
+function formatWhen(isoOrSqlite) {
+  const d = parseDate(isoOrSqlite);
+  if (!d) return isoOrSqlite ? String(isoOrSqlite) : "—";
   return d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
+}
+
+function dealCodeTag(code) {
+  return `\`${code}\``;
+}
+
+function formatTxidLine(txid, { emoji = true } = {}) {
+  const id = String(txid || "").trim();
+  if (!id) return null;
+  const prefix = emoji ? `${e("info")}` : "";
+  if (/^[a-f0-9]{64}$/i.test(id)) {
+    const url = getExplorerTxUrl(id);
+    return `${prefix}**TXID** — \`${id}\` · [Lien](${url})`;
+  }
+  return `${prefix}**TXID** — \`${id}\``;
+}
+
+function formatBuyerSellerLines(deal) {
+  return [
+    `${e("buyer")}**Acheteur** — <@${deal.buyer_id || "?"}>`,
+    `${e("seller")}**Vendeur** — <@${deal.seller_id || "?"}>`,
+  ];
 }
 
 /**
@@ -138,16 +176,22 @@ function formatFiatParen(deal) {
   return `(${price}€)`;
 }
 
-async function logPublicCompleted(client, deal) {
+function formatCryptoAmountLine(deal) {
   const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const crypto = deal.crypto || "LTC";
-  const when = formatWhen(deal.completed_at || deal.review_at || deal.updated_at);
+  return `\`${amount} ${crypto}\` ${formatFiatParen(deal)}`;
+}
+
+async function logPublicCompleted(client, deal) {
+  const crypto = deal.crypto || "LTC";
+  const when = discordTimestamp(deal.completed_at || deal.review_at || deal.updated_at);
 
   const buyerAnon =
     deal.review_anonymous != null
       ? Boolean(deal.review_anonymous)
       : isUserAnonymous(deal.buyer_id);
   const sellerAnon = isUserAnonymous(deal.seller_id);
+  const txLine = formatTxidLine(deal.payout_id);
 
   const container = new ContainerBuilder();
   container.addTextDisplayComponents(
@@ -159,10 +203,11 @@ async function logPublicCompleted(client, deal) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("ltc")}${crypto}\n` +
-        `\`${amount} ${crypto}\` ${formatFiatParen(deal)}\n\n` +
+        `${formatCryptoAmountLine(deal)}\n\n` +
         `${e("buyer")}**Acheteur** — ${formatAuthor(deal.buyer_id, { anonymous: buyerAnon })}\n` +
-        `${e("seller")}**Vendeur** — ${formatAuthor(deal.seller_id, { anonymous: sellerAnon })}\n\n` +
-        `${e("clock")}${when}`
+        `${e("seller")}**Vendeur** — ${formatAuthor(deal.seller_id, { anonymous: sellerAnon })}\n` +
+        (txLine ? `\n${txLine}\n` : "\n") +
+        `\n${e("clock")}${when}`
     )
   );
 
@@ -243,6 +288,12 @@ module.exports = {
   logAdmin,
   logPublicCompleted,
   formatWhen,
+  discordTimestamp,
+  dealCodeTag,
+  formatTxidLine,
+  formatBuyerSellerLines,
+  formatCryptoAmountLine,
+  formatFiatParen,
   probeLogChannels,
   cleanChannelId,
   diagnoseChannelEnv,

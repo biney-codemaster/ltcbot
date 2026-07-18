@@ -9,7 +9,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 const config = require("../config");
-const { formatWhen } = require("./dealLogger");
+const { discordTimestamp, dealCodeTag } = require("./dealLogger");
 
 const { e } = config;
 
@@ -21,17 +21,36 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+/** Remplace <:name:id> / <a:name:id> par des images CDN Discord. */
+function replaceDiscordEmojis(text) {
+  return String(text || "").replace(
+    /<(a)?:([\w]+):(\d+)>/g,
+    (_m, animated, name, id) => {
+      const ext = animated ? "gif" : "png";
+      const url = `https://cdn.discordapp.com/emojis/${id}.${ext}?size=48&quality=lossless`;
+      return `<img class="emoji" src="${url}" alt=":${name}:" title=":${name}:" draggable="false"/>`;
+    }
+  );
+}
+
 function markdownLiteToHtml(text) {
-  let s = escapeHtml(text || "");
+  // Emojis d'abord (avant escape), puis placeholders pour les protéger
+  const withEmoji = replaceDiscordEmojis(text || "");
+  const parts = [];
+  const masked = withEmoji.replace(/<img class="emoji"[^>]+>/g, (img) => {
+    const i = parts.length;
+    parts.push(img);
+    return `\u0000EMOJI${i}\u0000`;
+  });
+
+  let s = escapeHtml(masked);
   s = s.replace(/\n/g, "<br>");
-  // headings
   s = s.replace(/(^|<br>)#\s+(.+?)(?=<br>|$)/g, "$1<h3 class='md-h'>$2</h3>");
   s = s.replace(/(^|<br>)##\s+(.+?)(?=<br>|$)/g, "$1<h4 class='md-h'>$2</h4>");
-  // bold / italic / code
   s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
   s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
-  // discord mentions / custom emoji (display raw)
+  s = s.replace(/\u0000EMOJI(\d+)\u0000/g, (_m, i) => parts[Number(i)] || "");
   return s;
 }
 
@@ -54,12 +73,24 @@ function buttonStyleClass(style) {
   }
 }
 
+function renderButtonEmoji(emoji) {
+  if (!emoji) return "";
+  if (emoji.id) {
+    const ext = emoji.animated ? "gif" : "png";
+    const url = `https://cdn.discordapp.com/emojis/${emoji.id}.${ext}?size=32&quality=lossless`;
+    const name = escapeHtml(emoji.name || "emoji");
+    return `<img class="emoji" src="${url}" alt=":${name}:"/> `;
+  }
+  if (emoji.name) return `${escapeHtml(emoji.name)} `;
+  return "";
+}
+
 function renderButton(btn) {
   const data = btn.data || btn;
   const label = escapeHtml(data.label || "Bouton");
   const disabled = data.disabled ? " disabled" : "";
   const cls = buttonStyleClass(data.style);
-  const emoji = data.emoji?.name ? `${escapeHtml(data.emoji.name)} ` : "";
+  const emoji = renderButtonEmoji(data.emoji);
   if (data.style === ButtonStyle.Link || data.url) {
     return `<a class="${cls}${disabled}" href="${escapeHtml(data.url || "#")}">${emoji}${label}</a>`;
   }
@@ -239,6 +270,7 @@ async function buildHtmlTranscript(channel, deal) {
   .muted{color:var(--muted)}
   .v2-container{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:8px 0}
   .text-display{margin:4px 0}
+  img.emoji{width:1.375em;height:1.375em;object-fit:contain;vertical-align:-0.3em;display:inline}
   .md-h{margin:6px 0 4px;color:#fff;font-weight:700}
   h3.md-h{font-size:18px} h4.md-h{font-size:15px}
   code{background:var(--code);padding:1px 4px;border-radius:3px;font-size:13px}
@@ -273,8 +305,8 @@ async function buildHtmlTranscript(channel, deal) {
 function buildTranscriptNoticeContainer(deal, audience) {
   const title =
     audience === "admin"
-      ? `${e("staff")}Transcript — Deal #${deal.deal_code}`
-      : `${e("deal")}Transcript — Deal #${deal.deal_code}`;
+      ? `${e("staff")}Transcript — Deal #${dealCodeTag(deal.deal_code)}`
+      : `${e("deal")}Transcript — Deal #${dealCodeTag(deal.deal_code)}`;
 
   const container = new ContainerBuilder();
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${title}`));
@@ -283,7 +315,7 @@ function buildTranscriptNoticeContainer(deal, audience) {
   );
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("success")}Deal clôturé — ${formatWhen(deal.completed_at || new Date().toISOString())}\n\n` +
+      `${e("success")}Deal clôturé — ${discordTimestamp(deal.completed_at || new Date().toISOString())}\n\n` +
         `${e("info")}Le fichier HTML joint reprend le **ticket tel quel** (messages, containers, boutons).\n` +
         `${e("shield")}Conserve-le comme preuve.`
     )

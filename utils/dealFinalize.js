@@ -1,7 +1,14 @@
 const { MessageFlags } = require("discord.js");
 const db = require("../database");
 const config = require("../config");
-const { logAdmin, logPublicCompleted } = require("./dealLogger");
+const {
+  logAdmin,
+  logPublicCompleted,
+  dealCodeTag,
+  formatTxidLine,
+  formatBuyerSellerLines,
+  formatCryptoAmountLine,
+} = require("./dealLogger");
 const { deliverTranscripts } = require("./transcript");
 const { buildReviewPostedContainer } = require("./dealContainer");
 
@@ -12,8 +19,9 @@ const { e } = config;
  */
 async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
   const dealCode = deal.deal_code;
+  const botId = client.user?.id;
 
-  // Publier l'avis (container V2, fallback embed)
+  // Publier l'avis (container V2, fallback texte)
   if (config.reviewsChannelId && reviewContainer) {
     try {
       const reviewsCh = await client.channels.fetch(config.reviewsChannelId);
@@ -25,12 +33,14 @@ async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
           });
         } catch (err) {
           console.warn("Avis V2 KO, fallback texte:", err.message);
+          const stars = `${"★".repeat(deal.review_rating)}${"☆".repeat(5 - deal.review_rating)}`;
           await reviewsCh.send({
             content:
-              `**Nouvel avis** — ${"★".repeat(deal.review_rating)}${"☆".repeat(5 - deal.review_rating)}\n` +
+              `**Nouvel avis** — Rating ${stars}\n` +
               `Auteur — ${deal.review_anonymous ? "Anonyme" : `<@${deal.buyer_id}>`}\n` +
-              `Avis pour le bot escrow\n\n` +
-              `${deal.review_text}`,
+              `Avis pour ${botId ? `<@${botId}>` : "le bot"}\n` +
+              `${formatCryptoAmountLine(deal)}\n\n` +
+              `**Note**\n${deal.review_text}`,
           });
         }
       }
@@ -50,13 +60,14 @@ async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
   const completed = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(dealCode);
 
   await logPublicCompleted(client, completed);
-  await logAdmin(client, `Deal complété #${dealCode}`, [
+  await logAdmin(client, `Deal complété #${dealCodeTag(dealCode)}`, [
     `${e("success")}Avis reçu — deal clôturé`,
     `${e("product")}**Produit** — ${completed.product}`,
-    `${e("money")}**Prix** — ${completed.price}${completed.currency}`,
-    `${e("confirm")}**Note** — ${completed.review_rating}/5`,
+    `${e("ltc")}${formatCryptoAmountLine(completed)}`,
+    `${e("confirm")}**Rating** — ${completed.review_rating}/5`,
     `${e("users")}**Anonyme** — ${completed.review_anonymous ? "oui" : "non"}`,
-    `${e("buyer")}<@${completed.buyer_id}> · ${e("seller")}<@${completed.seller_id}>`,
+    ...formatBuyerSellerLines(completed),
+    formatTxidLine(completed.payout_id),
   ]);
 
   let channel = null;
@@ -80,7 +91,7 @@ async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
       await deliverTranscripts(client, channel, completed);
     } catch (err) {
       console.error(`Transcript #${dealCode}:`, err.message);
-      await logAdmin(client, `Transcript KO #${dealCode}`, [
+      await logAdmin(client, `Transcript KO #${dealCodeTag(dealCode)}`, [
         `${e("error")}${err.message}`,
       ]);
     }

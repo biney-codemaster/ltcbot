@@ -8,6 +8,7 @@ const {
   resolvePayoutAmount,
   isPayoutDoneStatus,
   isPayoutFailedStatus,
+  findFundingTxid,
 } = require("./ltcWallet");
 const {
   buildPaymentContainer,
@@ -18,7 +19,12 @@ const {
 } = require("./dealContainer");
 const { MessageFlags } = require("discord.js");
 const { e } = require("../config");
-const { logAdmin } = require("./dealLogger");
+const {
+  logAdmin,
+  dealCodeTag,
+  formatTxidLine,
+  formatBuyerSellerLines,
+} = require("./dealLogger");
 const { formatLtcAmount } = require("./ltcPrice");
 
 const POLL_INTERVAL_MS = 5_000;
@@ -110,11 +116,13 @@ async function refreshDealPayment(deal) {
     });
     updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
     await publishFundsHeld(updated);
-    await logAdmin(client, `Paiement reçu #${updated.deal_code}`, [
+    const fundingTxid = await findFundingTxid(updated).catch(() => null);
+    await logAdmin(client, `Paiement reçu #${dealCodeTag(updated.deal_code)}`, [
       `${e("shield")}Fonds sécurisés en escrow`,
       `${e("ltc")}**Montant** — \`${formatLtcAmount(Number(updated.pay_amount)) || "—"} LTC\``,
       `${e("wallet")}**Adresse** — \`${updated.pay_address || "—"}\``,
-      `${e("buyer")}<@${updated.buyer_id}> → ${e("seller")}<@${updated.seller_id}>`,
+      formatTxidLine(fundingTxid),
+      ...formatBuyerSellerLines(updated),
     ]);
     return updated;
   }
@@ -195,10 +203,11 @@ async function refreshDealPayout(deal) {
               ).run(deal.deal_code);
             }
 
-            await logAdmin(client, `Payout confirmé #${deal.deal_code}`, [
+            await logAdmin(client, `Payout confirmé #${dealCodeTag(deal.deal_code)}`, [
               `${e("success")}Fonds envoyés au vendeur`,
-              `${e("info")}**TXID** — \`${deal.payout_id}\``,
+              formatTxidLine(deal.payout_id),
               `${e("wallet")}**Adresse** — \`${deal.seller_wallet || "—"}\``,
+              ...formatBuyerSellerLines(confirmed),
               `${e("next")}En attente de l'avis acheteur`,
             ]);
 
@@ -207,13 +216,14 @@ async function refreshDealPayout(deal) {
 
           await channel.send({
             content:
-              `${e("error")}Payout #${deal.deal_code} échoué — statut **${payoutStatus}**. ` +
-              `TXID : \`${deal.payout_id}\``,
+              `${e("error")}Payout #${dealCodeTag(deal.deal_code)} échoué — statut **${payoutStatus}**.\n` +
+              `${formatTxidLine(deal.payout_id) || ""}`,
           }).catch(() => {});
 
-          await logAdmin(client, `Payout échoué #${deal.deal_code}`, [
+          await logAdmin(client, `Payout échoué #${dealCodeTag(deal.deal_code)}`, [
             `${e("error")}Statut **${payoutStatus}**`,
-            `${e("info")}**TXID** — \`${deal.payout_id}\``,
+            formatTxidLine(deal.payout_id),
+            ...formatBuyerSellerLines(deal),
           ]);
         }
       } catch {

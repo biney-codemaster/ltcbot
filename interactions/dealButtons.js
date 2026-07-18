@@ -34,7 +34,12 @@ const {
 } = require("../utils/ltcWallet");
 const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/paymentPoller");
 const { formatLtcAmount } = require("../utils/ltcPrice");
-const { logAdmin } = require("../utils/dealLogger");
+const {
+  logAdmin,
+  dealCodeTag,
+  formatTxidLine,
+  formatBuyerSellerLines,
+} = require("../utils/dealLogger");
 const { finalizeDealAfterReview } = require("../utils/dealFinalize");
 const { isUserAnonymous } = require("../utils/userPrefs");
 
@@ -70,16 +75,35 @@ function denyUnlessBuyer(interaction, deal) {
   return deny(interaction, "Seul l'**acheteur** peut utiliser ce bouton.");
 }
 
-/** Vendeur (ou staff). */
+/** Vendeur (ou staff). L'acheteur est TOUJOURS refusé pour l'adresse de retrait. */
 function denyUnlessSeller(interaction, deal) {
-  if (isSeller(deal, interaction.user.id) || isStaff(interaction.member)) return null;
-  if (isBuyer(deal, interaction.user.id)) {
+  const uid = interaction.user.id;
+  if (isBuyer(deal, uid) && !isSeller(deal, uid)) {
     return deny(
       interaction,
-      "Seul le **vendeur** peut définir ou modifier l'adresse de retrait. L'acheteur ne peut pas la changer."
+      "⛔ L'**acheteur** ne peut **pas** ajouter ni modifier l'adresse du vendeur."
     );
   }
+  if (isSeller(deal, uid) || isStaff(interaction.member)) return null;
   return deny(interaction, "Seul le **vendeur** peut utiliser ce bouton.");
+}
+
+/** Réservé strictement au vendeur (pas le staff à la place du vendeur pour l'adresse). */
+function denyUnlessSellerOnly(interaction, deal) {
+  const uid = interaction.user.id;
+  if (isBuyer(deal, uid)) {
+    return deny(
+      interaction,
+      "⛔ L'**acheteur** ne peut **pas** ajouter ni modifier l'adresse du vendeur."
+    );
+  }
+  if (!isSeller(deal, uid)) {
+    return deny(
+      interaction,
+      "Seul le **vendeur** de ce deal peut définir ou modifier cette adresse."
+    );
+  }
+  return null;
 }
 
 async function createAndSendPayment(channel, deal) {
@@ -202,11 +226,11 @@ async function handleConfirmButton(interaction, dealCode) {
     try {
       await createAndSendPayment(interaction.channel, updatedDeal);
       const paidDeal = getDealByCode(dealCode);
-      await logAdmin(interaction.client, `Paiement généré #${dealCode}`, [
+      await logAdmin(interaction.client, `Paiement généré #${dealCodeTag(dealCode)}`, [
         `${e("payment")}Adresse LTC créée`,
         `${e("wallet")}**Adresse** — \`${paidDeal.pay_address || "—"}\``,
         `${e("ltc")}**Montant** — \`${formatLtcAmount(Number(paidDeal.pay_amount)) || "—"} LTC\``,
-        `${e("buyer")}<@${paidDeal.buyer_id}> · ${e("seller")}<@${paidDeal.seller_id}>`,
+        ...formatBuyerSellerLines(paidDeal),
       ]);
     } catch (err) {
       console.error("Création paiement wallet LTC:", err.message);
@@ -280,10 +304,11 @@ async function handleCancelButton(interaction, dealCode) {
     flags: MessageFlags.IsComponentsV2,
   });
 
-  await logAdmin(interaction.client, `Deal annulé #${dealCode}`, [
+  await logAdmin(interaction.client, `Deal annulé #${dealCodeTag(dealCode)}`, [
     `${e("cancel")}Annulé par <@${interaction.user.id}>`,
     `${e("product")}**Produit** — ${updatedDeal.product}`,
     `${e("money")}**Prix** — ${updatedDeal.price}${updatedDeal.currency}`,
+    ...formatBuyerSellerLines(updatedDeal),
   ]);
 }
 
@@ -422,11 +447,11 @@ async function handleReleaseButton(interaction, dealCode) {
       flags: MessageFlags.IsComponentsV2,
     });
 
-    await logAdmin(interaction.client, `Payout diffusé #${dealCode}`, [
-      `${e("release")}Transaction broadcast`,
-      `${e("info")}**TXID** — \`${result.payoutId}\``,
+    await logAdmin(interaction.client, `Payout diffusé #${dealCodeTag(dealCode)}`, [
+      `${e("release")}Transaction broadcast vers le vendeur`,
+      formatTxidLine(result.payoutId),
       `${e("wallet")}**Vers** — \`${deal.seller_wallet}\``,
-      `${e("buyer")}<@${deal.buyer_id}> → ${e("seller")}<@${deal.seller_id}>`,
+      ...formatBuyerSellerLines(deal),
     ]);
 
     return interaction.editReply({
@@ -459,7 +484,7 @@ async function handleSellerWalletButton(interaction, dealCode) {
   if (!["funds_held", "disputed"].includes(deal.status)) {
     return deny(interaction, "L'adresse ne peut être définie qu'une fois les fonds sécurisés.");
   }
-  const blocked = denyUnlessSeller(interaction, deal);
+  const blocked = denyUnlessSellerOnly(interaction, deal);
   if (blocked) return blocked;
 
   const modal = new ModalBuilder()
@@ -489,7 +514,7 @@ async function handleSellerWalletModal(interaction) {
   const dealCode = interaction.customId.split(":")[1];
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal introuvable.");
-  const blocked = denyUnlessSeller(interaction, deal);
+  const blocked = denyUnlessSellerOnly(interaction, deal);
   if (blocked) return blocked;
 
   const wallet = interaction.fields.getTextInputValue("seller_wallet").trim();
@@ -575,10 +600,11 @@ async function handleDisputeModal(interaction) {
     flags: MessageFlags.IsComponentsV2,
   });
 
-  await logAdmin(interaction.client, `Litige ouvert #${dealCode}`, [
+  await logAdmin(interaction.client, `Litige ouvert #${dealCodeTag(dealCode)}`, [
     `${e("dispute")}Ouvert par <@${interaction.user.id}>`,
     `**Motif** — ${reason.slice(0, 300)}`,
-    `${e("buyer")}<@${updatedDeal.buyer_id}> · ${e("seller")}<@${updatedDeal.seller_id}>`,
+    ...formatBuyerSellerLines(updatedDeal),
+    formatTxidLine(updatedDeal.payout_id),
   ]);
 }
 
@@ -632,13 +658,15 @@ async function handleStaffResolveButton(interaction, dealCode) {
 
   await interaction.channel.send({
     content:
-      `${e("staff")}Litige #${dealCode} clôturé par <@${interaction.user.id}> **sans payout auto**.\n` +
+      `${e("staff")}Litige #${dealCodeTag(dealCode)} clôturé par <@${interaction.user.id}> **sans payout auto**.\n` +
       `${e("warning")}Si des fonds restent sur l'adresse escrow, gérez-les manuellement avec la seed.`,
   });
 
-  await logAdmin(interaction.client, `Litige clôturé #${dealCode}`, [
+  await logAdmin(interaction.client, `Litige clôturé #${dealCodeTag(dealCode)}`, [
     `${e("staff")}Clôturé sans payout par <@${interaction.user.id}>`,
     `${e("product")}**Produit** — ${updated.product}`,
+    ...formatBuyerSellerLines(updated),
+    formatTxidLine(updated.payout_id),
   ]);
 }
 
@@ -691,10 +719,9 @@ async function handleStaffRefundButton(interaction, dealCode) {
 
     await interaction.channel.send({
       content:
-        `${e("success")}Remboursement acheteur diffusé pour #${dealCode}.\n` +
+        `${e("success")}Remboursement acheteur diffusé pour #${dealCodeTag(dealCode)}.\n` +
         `${e("wallet")}**Adresse détectée** — \`${buyerWallet}\`\n` +
-        `${e("info")}**TXID** — \`${result.payoutId}\`\n` +
-        `${e("next")}[Explorer](https://litecoinspace.org/tx/${result.payoutId})`,
+        `${formatTxidLine(result.payoutId)}`,
     });
 
     await interaction.channel.send({
@@ -702,11 +729,11 @@ async function handleStaffRefundButton(interaction, dealCode) {
       flags: MessageFlags.IsComponentsV2,
     });
 
-    await logAdmin(interaction.client, `Remboursement #${dealCode}`, [
+    await logAdmin(interaction.client, `Remboursement #${dealCodeTag(dealCode)}`, [
       `${e("money")}Remboursé auto à l'acheteur par <@${interaction.user.id}>`,
       `${e("wallet")}**Adresse (détectée)** — \`${buyerWallet}\``,
-      `${e("info")}**TXID** — \`${result.payoutId}\``,
-      `${e("buyer")}<@${updated.buyer_id}>`,
+      formatTxidLine(result.payoutId),
+      ...formatBuyerSellerLines(updated),
     ]);
 
     return interaction.editReply({
@@ -814,10 +841,9 @@ async function handleStaffRefundModal(interaction) {
 
     await interaction.channel.send({
       content:
-        `${e("success")}Remboursement acheteur diffusé pour #${dealCode}.\n` +
+        `${e("success")}Remboursement acheteur diffusé pour #${dealCodeTag(dealCode)}.\n` +
         `${e("wallet")}**Vers** — \`${buyerWallet}\`\n` +
-        `${e("info")}**TXID** — \`${result.payoutId}\`\n` +
-        `${e("next")}[Explorer](https://litecoinspace.org/tx/${result.payoutId})`,
+        `${formatTxidLine(result.payoutId)}`,
     });
 
     await interaction.channel.send({
@@ -825,11 +851,11 @@ async function handleStaffRefundModal(interaction) {
       flags: MessageFlags.IsComponentsV2,
     });
 
-    await logAdmin(interaction.client, `Remboursement #${dealCode}`, [
+    await logAdmin(interaction.client, `Remboursement #${dealCodeTag(dealCode)}`, [
       `${e("money")}Remboursé à l'acheteur par <@${interaction.user.id}>`,
       `${e("wallet")}**Adresse** — \`${buyerWallet}\``,
-      `${e("info")}**TXID** — \`${result.payoutId}\``,
-      `${e("buyer")}<@${updated.buyer_id}>`,
+      formatTxidLine(result.payoutId),
+      ...formatBuyerSellerLines(updated),
     ]);
 
     return interaction.editReply({
@@ -936,7 +962,9 @@ async function handleReviewModal(interaction) {
   });
 
   const updated = getDealByCode(dealCode);
-  const reviewContainer = buildPublicReviewContainer(updated);
+  const reviewContainer = buildPublicReviewContainer(updated, {
+    botId: interaction.client.user?.id,
+  });
 
   try {
     await finalizeDealAfterReview(interaction.client, updated, { reviewContainer });
@@ -959,9 +987,11 @@ async function handleCloseButton(interaction, dealCode) {
     return deny(interaction, "Seul le staff peut fermer ce salon.");
   }
 
-  await logAdmin(interaction.client, `Salon fermé #${dealCode}`, [
+  await logAdmin(interaction.client, `Salon fermé #${dealCodeTag(dealCode)}`, [
     `${e("close")}Fermé par <@${interaction.user.id}>`,
     `**Statut deal** — ${deal.status}`,
+    ...formatBuyerSellerLines(deal),
+    formatTxidLine(deal.payout_id),
   ]);
 
   await interaction.reply({
