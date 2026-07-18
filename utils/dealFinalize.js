@@ -11,6 +11,7 @@ const {
 } = require("./dealLogger");
 const { deliverTranscripts } = require("./transcript");
 const { buildReviewPostedContainer } = require("./dealContainer");
+const { assignCustomerRole } = require("./assignCustomerRole");
 
 const { e } = config;
 
@@ -57,6 +58,11 @@ async function finalizeDealAfterReview(client, deal, { reviewContainer }) {
   ).run(dealCode);
 
   const completed = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(dealCode);
+
+  // Silent role for the reviewer (Customer label on reviews = buyer_id)
+  if (completed.buyer_id && completed.guild_id) {
+    await assignCustomerRole(client, completed.guild_id, completed.buyer_id);
+  }
 
   await logPublicCompleted(client, completed);
   await logAdmin(client, `Deal completed #${dealCodeTag(dealCode)}`, [

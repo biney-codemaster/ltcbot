@@ -16,6 +16,8 @@ const {
 const config = require("./config");
 const setupCommand = require("./commands/setup");
 const anonymousCommand = require("./commands/anonymous");
+const statsCommand = require("./commands/stats");
+const howtoCommand = require("./commands/howto");
 const { handleDealModal } = require("./interactions/dealModal");
 const { ensurePrefsTable } = require("./utils/userPrefs");
 const {
@@ -53,12 +55,18 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
   ],
 });
 
 ensurePrefsTable();
-const commands = [setupCommand.data.toJSON(), anonymousCommand.data.toJSON()];
+const commands = [
+  setupCommand.data.toJSON(),
+  anonymousCommand.data.toJSON(),
+  statsCommand.data.toJSON(),
+  howtoCommand.data.toJSON(),
+];
 
 async function registerCommands() {
   const rest = new REST().setToken(config.token);
@@ -177,6 +185,14 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand() && interaction.commandName === "anonymous") {
       await anonymousCommand.execute(interaction);
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === "stats") {
+      await statsCommand.execute(interaction);
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === "howto") {
+      await howtoCommand.execute(interaction);
     }
 
     if (interaction.isButton() && interaction.customId === "escrow_start_deal") {

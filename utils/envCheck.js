@@ -12,7 +12,10 @@ function validateEnv() {
     warnings.push("GUILD_ID vide → commandes globales (plus lentes à propager)");
   }
   if (!process.env.STAFF_ROLE_ID) {
-    warnings.push("STAFF_ROLE_ID vide → le staff n'aura pas accès aux salons / fermetures");
+    warnings.push("STAFF_ROLE_ID empty → staff may lack deal channel access");
+  }
+  if (!String(process.env.CUSTOMER_ROLE_ID || "").trim()) {
+    warnings.push("CUSTOMER_ROLE_ID empty → no role assigned after deal reviews");
   }
   if (!process.env.LTC_WALLET_MNEMONIC) {
     warnings.push(

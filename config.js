@@ -86,6 +86,13 @@ module.exports = {
   clientId: process.env.CLIENT_ID,
   guildId: process.env.GUILD_ID, // pour enregistrer les commandes en dev (instant), sinon global
   staffRoleId: process.env.STAFF_ROLE_ID, // rôle staff/médiateur ayant accès aux salons de deal
+  /** Role given silently after a completed deal review. */
+  customerRoleId: (() => {
+    const raw = String(process.env.CUSTOMER_ROLE_ID || "").trim();
+    if (!raw) return null;
+    const m = raw.match(/(\d{16,22})/);
+    return m ? m[1] : null;
+  })(),
   /** Seed BIP39 du wallet HD escrow (sinon fichier wallet.mnemonic auto-créé). */
   ltcWalletMnemonic: (process.env.LTC_WALLET_MNEMONIC || "").trim() || null,
 
