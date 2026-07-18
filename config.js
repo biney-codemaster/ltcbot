@@ -26,7 +26,7 @@ const rawEmojis = {
   clock: null, // en attente
 
   // Escrow / deal
-  escrow: null, // panneau principal escrow
+  escrow: null, // panneau principal + bouton déco (mets "<:nom:id>" pour l'afficher)
   deal: null, // deal / transaction
   shield: null, // confiance / protection des fonds
   roles: null, // sélection des rôles
@@ -38,7 +38,9 @@ const rawEmojis = {
   // Paiement
   money: null, // montant fiat
   crypto: null, // crypto générique
-  ltc: null, // Litecoin
+  usd: "<:emoji_21:1527831343273345024>", // dollar $
+  eur: "<:emoji_22:1527831361107529848>", // euro €
+  ltc: "<:emojigg_ltc:1527807573493809203>", // Litecoin
   wallet: null, // adresse / portefeuille
   payment: null, // paiement en cours
   release: null, // libération des fonds
@@ -61,14 +63,75 @@ function e(key) {
   return emojiText[key] ? `${emojiText[key]} ` : "";
 }
 
+function readChannelId(...envKeys) {
+  for (const envKey of envKeys) {
+    const raw = process.env[envKey];
+    if (raw == null) continue;
+    let s = String(raw).trim().replace(/^['"]+|['"]+$/g, "").trim();
+    // enlève BOM / caractères invisibles fréquents
+    s = s.replace(/^\uFEFF/, "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+    if (!s) continue;
+    const mention = s.match(/^<#(\d{16,22})>$/);
+    if (mention) return mention[1];
+    s = s.replace(/[<#>]/g, "").trim();
+    if (/^\d{16,22}$/.test(s)) return s;
+    const embedded = s.match(/(\d{16,22})/);
+    if (embedded) return embedded[1];
+  }
+  return null;
+}
+
+/** Salon du panel /howto — lu à chaque appel (évite un .env chargé trop tôt / oubli de restart). */
+function getHowtoChannelId() {
+  return readChannelId(
+    "HOWTO_CHANNEL_ID",
+    "HOW_TO_USE_CHANNEL_ID",
+    "HOWTO_USE_CHANNEL_ID",
+    "HOW_TO_CHANNEL_ID"
+  );
+}
+
+/** Role given silently after a completed deal review (live read). */
+function getCustomerRoleId() {
+  const raw = String(process.env.CUSTOMER_ROLE_ID || "").trim();
+  if (!raw) return null;
+  const m = raw.match(/(\d{16,22})/);
+  return m ? m[1] : null;
+}
+
 module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.CLIENT_ID,
   guildId: process.env.GUILD_ID, // pour enregistrer les commandes en dev (instant), sinon global
   staffRoleId: process.env.STAFF_ROLE_ID, // rôle staff/médiateur ayant accès aux salons de deal
-  oxapayMerchantApiKey: process.env.OXAPAY_MERCHANT_API_KEY || null,
-  oxapayPayoutApiKey: process.env.OXAPAY_PAYOUT_API_KEY || null,
-  oxapayCallbackUrl: process.env.OXAPAY_CALLBACK_URL || null,
+  getCustomerRoleId,
+  get customerRoleId() {
+    return getCustomerRoleId();
+  },
+  /** Seed BIP39 du wallet HD escrow (sinon fichier wallet.mnemonic auto-créé). */
+  ltcWalletMnemonic: (process.env.LTC_WALLET_MNEMONIC || "").trim() || null,
+
+  /** Salons Discord (IDs numériques). Alias acceptés pour éviter les typos .env */
+  adminLogsChannelId: readChannelId(
+    "ADMIN_LOGS_CHANNEL_ID",
+    "ADMIN_LOG_CHANNEL_ID",
+    "LOGS_ADMIN_CHANNEL_ID"
+  ),
+  publicLogsChannelId: readChannelId(
+    "PUBLIC_LOGS_CHANNEL_ID",
+    "PUBLIC_LOG_CHANNEL_ID",
+    "LOGS_PUBLIC_CHANNEL_ID"
+  ),
+  reviewsChannelId: readChannelId(
+    "REVIEWS_CHANNEL_ID",
+    "REVIEW_CHANNEL_ID",
+    "AVIS_CHANNEL_ID"
+  ),
+  get howtoChannelId() {
+    return getHowtoChannelId();
+  },
+  getHowtoChannelId,
+  readChannelId,
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages

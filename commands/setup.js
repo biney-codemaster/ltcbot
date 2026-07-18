@@ -9,6 +9,7 @@ const {
   SeparatorSpacingSize,
   MessageFlags,
   PermissionFlagsBits,
+  ChannelType,
 } = require("discord.js");
 const config = require("../config");
 
@@ -16,14 +17,27 @@ const { e, emojis } = config;
 
 const data = new SlashCommandBuilder()
   .setName("setup")
-  .setDescription("Affiche le panneau pour démarrer un deal en escrow")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
+  .setDescription("Post the deal panel in this channel")
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addChannelOption((opt) =>
+    opt
+      .setName("howto_channel")
+      .setDescription("How-to-use channel (optional if HOWTO_CHANNEL_ID is set in .env)")
+      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+      .setRequired(false)
+  );
 
-function buildSetupContainer() {
+function resolveHowtoChannelId(interaction) {
+  const picked = interaction.options.getChannel("howto_channel");
+  if (picked?.id) return picked.id;
+  return config.getHowtoChannelId();
+}
+
+function buildSetupContainer(guildId, howtoChannelId) {
   const container = new ContainerBuilder();
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`# ${e("escrow")}Système d'escrow`)
+    new TextDisplayBuilder().setContent(`# ${e("escrow")}Escrow`)
   );
 
   container.addSeparatorComponents(
@@ -32,37 +46,40 @@ function buildSetupContainer() {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("shield")}Intermédiaire de confiance entre **acheteur** et **vendeur**.\n` +
-        `Les fonds sont sécurisés sur OxaPay jusqu'à confirmation de réception.\n\n` +
-        `## ${e("info")}Déroulement\n` +
-        `1. Création du deal et salon privé\n` +
-        `2. Choix des rôles (acheteur / vendeur)\n` +
-        `3. Confirmation mutuelle des termes\n` +
-        `4. Paiement LTC puis libération vers le vendeur`
+      `${e("deal")}Start a secured deal.\n` +
+        `${e("money")}**0 service fees** — only network fees apply.`
     )
   );
 
-  container.addSeparatorComponents(
-    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
-  );
+  const rowButtons = [];
 
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `## ${e("deal")}Nouveau deal\n` +
-        `Cliquez ci-dessous pour ouvrir un deal sécurisé.`
-    )
-  );
-
-  const button = new ButtonBuilder()
-    .setCustomId("escrow_start_deal")
-    .setLabel("Start a deal")
-    .setStyle(ButtonStyle.Secondary);
-
-  if (emojis.deal) {
-    button.setEmoji(emojis.deal);
+  if (emojis.escrow) {
+    rowButtons.push(
+      new ButtonBuilder()
+        .setCustomId("escrow_deco")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji(emojis.escrow)
+    );
   }
 
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(button));
+  rowButtons.push(
+    new ButtonBuilder()
+      .setCustomId("escrow_start_deal")
+      .setLabel("Start a deal")
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  // Link button — ouvre le salon directement (icône lien, pas d'éphémère)
+  if (howtoChannelId && guildId) {
+    rowButtons.push(
+      new ButtonBuilder()
+        .setLabel("How to use")
+        .setStyle(ButtonStyle.Link)
+        .setURL(`https://discord.com/channels/${guildId}/${howtoChannelId}`)
+    );
+  }
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(...rowButtons));
 
   return container;
 }
@@ -70,16 +87,37 @@ function buildSetupContainer() {
 async function execute(interaction) {
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
     return interaction.reply({
-      content: `${e("error")}Permission refusée. Il faut **Gérer le serveur**.`,
+      content: `${e("error")}Permission denied. You need **Manage Server**.`,
       flags: MessageFlags.Ephemeral,
     });
   }
 
-  const container = buildSetupContainer();
-  await interaction.reply({
-    components: [container],
+  const guildId = interaction.guildId;
+  const howtoChannelId = resolveHowtoChannelId(interaction);
+  const rawEnv = String(process.env.HOWTO_CHANNEL_ID || "").trim();
+
+  if (!howtoChannelId) {
+    await interaction.reply({
+      content:
+        `${e("success")}Panel sent **without** How to use button.\n` +
+        `${e("warning")}Set \`HOWTO_CHANNEL_ID=...\` in \`.env\` and **restart the bot**,\n` +
+        `or run \`/setup howto_channel:#your-channel\`.\n` +
+        (rawEnv
+          ? `${e("error")}Raw value was \`${rawEnv}\` — could not parse a channel ID.`
+          : `${e("info")}Process env \`HOWTO_CHANNEL_ID\` is empty (bot may not see your .env).`),
+      flags: MessageFlags.Ephemeral,
+    });
+  } else {
+    await interaction.reply({
+      content: `${e("success")}Panel sent — How to use → <#${howtoChannelId}>`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  await interaction.channel.send({
+    components: [buildSetupContainer(guildId, howtoChannelId)],
     flags: MessageFlags.IsComponentsV2,
   });
 }
 
-module.exports = { data, execute };
+module.exports = { data, execute, buildSetupContainer };

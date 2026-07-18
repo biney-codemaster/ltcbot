@@ -26,9 +26,9 @@ db.exec(`
     currency TEXT NOT NULL,       -- '€' ou '$'
     crypto TEXT NOT NULL DEFAULT 'LTC', -- crypto choisie pour le paiement (LTC pour l'instant)
 
-    -- Paiement crypto (OxaPay track_id)
-    payment_id TEXT,              -- track_id OxaPay
-    pay_address TEXT,             -- adresse LTC générée pour ce deal
+    -- Paiement crypto (wallet HD local)
+    payment_id TEXT,              -- hd:{index} dérivation BIP84
+    pay_address TEXT,             -- adresse LTC unique pour ce deal
     pay_amount REAL,              -- montant équivalent en crypto (estimé à la création)
     paid_at TEXT,                 -- date de réception du paiement
 
@@ -112,5 +112,72 @@ try {
 } catch {
   // colonne déjà présente
 }
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN wallet_index INTEGER`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_text TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_rating INTEGER`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_anonymous INTEGER NOT NULL DEFAULT 0`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_at TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN completed_at TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN review_prompted INTEGER NOT NULL DEFAULT 0`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN buyer_actions_message_id TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN seller_actions_message_id TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN buyer_wallet TEXT`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN expected_pay_amount REAL`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN received_pay_amount REAL`);
+} catch {
+  // colonne déjà présente
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS wallet_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )
+`);
 
 module.exports = db;

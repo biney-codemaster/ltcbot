@@ -1,15 +1,26 @@
 const { ChannelType, PermissionFlagsBits } = require("discord.js");
 const config = require("../config");
 
-const CATEGORY_NAME = "Escrow";
+const CATEGORY_NAME = "deal";
+const LEGACY_CATEGORY_NAME = "Escrow";
 
 /**
- * Récupère la catégorie "Escrow", la crée si elle n'existe pas.
+ * Récupère la catégorie "deal", la crée si elle n'existe pas.
+ * Renomme l'ancienne catégorie "Escrow" si elle est encore là.
  */
 async function getOrCreateCategory(guild) {
   let category = guild.channels.cache.find(
     (c) => c.type === ChannelType.GuildCategory && c.name === CATEGORY_NAME
   );
+
+  if (!category) {
+    const legacy = guild.channels.cache.find(
+      (c) => c.type === ChannelType.GuildCategory && c.name === LEGACY_CATEGORY_NAME
+    );
+    if (legacy) {
+      category = await legacy.setName(CATEGORY_NAME);
+    }
+  }
 
   if (!category) {
     category = await guild.channels.create({

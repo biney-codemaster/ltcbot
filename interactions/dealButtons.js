@@ -4,6 +4,11 @@ const {
   TextInputBuilder,
   TextInputStyle,
   LabelBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require("discord.js");
 const db = require("../database");
 const config = require("../config");
@@ -17,15 +22,27 @@ const {
   buildReleasedContainer,
   buildDisputeContainer,
   buildCloseTicketContainer,
+  buildRefundPendingContainer,
+  buildPublicReviewContainer,
 } = require("../utils/dealContainer");
 const {
   createLtcPayment,
   payoutToSeller,
+  refundToBuyer,
+  findBuyerRefundAddress,
   isValidLtcAddress,
   getPaymentStatus,
-} = require("../utils/oxapay");
+} = require("../utils/ltcWallet");
 const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/paymentPoller");
 const { formatLtcAmount } = require("../utils/ltcPrice");
+const {
+  logAdmin,
+  dealCodeTag,
+  formatTxidLine,
+  formatBuyerSellerLines,
+} = require("../utils/dealLogger");
+const { finalizeDealAfterReview } = require("../utils/dealFinalize");
+const { isUserAnonymous } = require("../utils/userPrefs");
 
 const { e } = config;
 
@@ -41,8 +58,53 @@ function isStaff(member) {
   return config.staffRoleId && member.roles.cache.has(config.staffRoleId);
 }
 
+function isBuyer(deal, userId) {
+  return Boolean(deal.buyer_id) && userId === deal.buyer_id;
+}
+
+function isSeller(deal, userId) {
+  return Boolean(deal.seller_id) && userId === deal.seller_id;
+}
+
 function deny(interaction, message) {
   return interaction.reply({ content: `${e("error")}${message}`, flags: MessageFlags.Ephemeral });
+}
+
+/** Acheteur (ou staff). */
+function denyUnlessBuyer(interaction, deal) {
+  if (isBuyer(deal, interaction.user.id) || isStaff(interaction.member)) return null;
+  return deny(interaction, "Only the **customer** can use this button.");
+}
+
+/** Vendeur (ou staff). L'acheteur est TOUJOURS refusé pour l'adresse de retrait. */
+function denyUnlessSeller(interaction, deal) {
+  const uid = interaction.user.id;
+  if (isBuyer(deal, uid) && !isSeller(deal, uid)) {
+    return deny(
+      interaction,
+      "⛔ The **customer** cannot add or change the seller's address."
+    );
+  }
+  if (isSeller(deal, uid) || isStaff(interaction.member)) return null;
+  return deny(interaction, "Only the **seller** can use this button.");
+}
+
+/** Réservé strictement au vendeur (pas le staff à la place du vendeur pour l'adresse). */
+function denyUnlessSellerOnly(interaction, deal) {
+  const uid = interaction.user.id;
+  if (isBuyer(deal, uid)) {
+    return deny(
+      interaction,
+      "⛔ The **customer** cannot add or change the seller's address."
+    );
+  }
+  if (!isSeller(deal, uid)) {
+    return deny(
+      interaction,
+      "Only this deal's **seller** can set or change this address."
+    );
+  }
+  return null;
 }
 
 async function createAndSendPayment(channel, deal) {
@@ -54,6 +116,8 @@ async function createAndSendPayment(channel, deal) {
      SET payment_id = @payment_id,
          pay_address = @pay_address,
          pay_amount = @pay_amount,
+         expected_pay_amount = @expected_pay_amount,
+         received_pay_amount = NULL,
          payment_status = @payment_status,
          status = 'awaiting_payment',
          payout_error = NULL,
@@ -63,6 +127,7 @@ async function createAndSendPayment(channel, deal) {
     payment_id: String(payment.payment_id),
     pay_address: payment.pay_address,
     pay_amount: payAmount,
+    expected_pay_amount: payAmount,
     payment_status: payment.payment_status || "waiting",
     deal_code: deal.deal_code,
   });
@@ -97,12 +162,12 @@ async function runSellerPayout(deal) {
 
 async function handleRoleButton(interaction, role, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (!isParticipant(deal, interaction.user.id)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
+    return deny(interaction, "This deal doesn't involve you.");
   }
   if (deal.status !== "pending_confirmation") {
-    return deny(interaction, "Les rôles ne peuvent plus être modifiés.");
+    return deny(interaction, "Roles can no longer be changed.");
   }
 
   const userId = interaction.user.id;
@@ -139,16 +204,16 @@ async function handleRoleButton(interaction, role, dealCode) {
 
 async function handleConfirmButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (!isParticipant(deal, interaction.user.id)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
+    return deny(interaction, "This deal doesn't involve you.");
   }
 
   const isInitiator = interaction.user.id === deal.initiator_id;
   const field = isInitiator ? "initiator_confirmed" : "partner_confirmed";
 
   if (deal[field]) {
-    return deny(interaction, "Tu as déjà confirmé.");
+    return deny(interaction, "You already confirmed.");
   }
 
   db.prepare(`UPDATE deals SET ${field} = 1 WHERE deal_code = ?`).run(dealCode);
@@ -164,8 +229,15 @@ async function handleConfirmButton(interaction, dealCode) {
 
     try {
       await createAndSendPayment(interaction.channel, updatedDeal);
+      const paidDeal = getDealByCode(dealCode);
+      await logAdmin(interaction.client, `Payment generated #${dealCodeTag(dealCode)}`, [
+        `${e("payment")}LTC address created`,
+        `${e("wallet")}**Address** — \`${paidDeal.pay_address || "—"}\``,
+        `${e("ltc")}**Amount** — \`${formatLtcAmount(Number(paidDeal.pay_amount)) || "—"} LTC\``,
+        ...formatBuyerSellerLines(paidDeal),
+      ]);
     } catch (err) {
-      console.error("Création paiement OxaPay:", err.message);
+      console.error("LTC wallet payment creation:", err.message);
       db.prepare(
         `UPDATE deals
          SET status = 'payment_failed', updated_at = datetime('now')
@@ -185,12 +257,12 @@ async function handleConfirmButton(interaction, dealCode) {
 
 async function handleWrongRolesButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (!isParticipant(deal, interaction.user.id)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
+    return deny(interaction, "This deal doesn't involve you.");
   }
   if (deal.status !== "pending_confirmation") {
-    return deny(interaction, "Les rôles ne peuvent plus être modifiés.");
+    return deny(interaction, "Roles can no longer be changed.");
   }
 
   db.prepare(`
@@ -215,15 +287,15 @@ async function handleWrongRolesButton(interaction, dealCode) {
 
 async function handleCancelButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (!isParticipant(deal, interaction.user.id)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
+    return deny(interaction, "This deal doesn't involve you.");
   }
   // Annulation libre uniquement avant qu'une invoice existe
   if (deal.status !== "pending_confirmation" || deal.payment_id) {
     return deny(
       interaction,
-      "Annulation impossible après génération du paiement. Ouvre un litige ou contacte le staff."
+      "Cancellation isn't possible after payment generation. Open a dispute or contact staff."
     );
   }
 
@@ -235,16 +307,22 @@ async function handleCancelButton(interaction, dealCode) {
     components: [buildCloseTicketContainer(updatedDeal, interaction.user.id)],
     flags: MessageFlags.IsComponentsV2,
   });
+
+  await logAdmin(interaction.client, `Deal cancelled #${dealCodeTag(dealCode)}`, [
+    `${e("cancel")}Cancelled by <@${interaction.user.id}>`,
+    `${e("product")}**Produit** — ${updatedDeal.product}`,
+    `${e("money")}**Prix** — ${updatedDeal.price}${updatedDeal.currency}`,
+    ...formatBuyerSellerLines(updatedDeal),
+  ]);
 }
 
 async function handleCheckPaymentButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
-  if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
-  }
+  if (!deal) return deny(interaction, "Deal not found.");
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
   if (!deal.payment_id) {
-    return deny(interaction, "Aucun paiement n'a encore été généré.");
+    return deny(interaction, "No payment has been generated yet.");
   }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -253,40 +331,39 @@ async function handleCheckPaymentButton(interaction, dealCode) {
     const updated = await refreshDealPayment(deal);
     if (updated.status === "funds_held") {
       return interaction.editReply({
-        content: `${e("success")}Paiement reçu. Les fonds sont maintenant sécurisés en escrow.`,
+        content: `${e("success")}Payment received. Funds are now secured in escrow.`,
       });
     }
     if (updated.status === "payment_failed") {
       return interaction.editReply({
-        content: `${e("error")}Paiement échoué/expiré. Tu peux régénérer une adresse.`,
+        content: `${e("error")}Payment failed/expired. You can regenerate an address.`,
       });
     }
 
     const amount = formatLtcAmount(Number(updated.pay_amount)) || "—";
     return interaction.editReply({
       content:
-        `${e("clock")}Statut actuel : **${updated.payment_status || "waiting"}**\n` +
-        `${e("ltc")}Montant attendu : \`${amount} ${updated.crypto || "LTC"}\``,
+        `${e("clock")}Current status: **${updated.payment_status || "waiting"}**\n` +
+        `${e("ltc")}Expected amount: \`${amount} ${updated.crypto || "LTC"}\``,
     });
   } catch (err) {
     console.error("Vérification paiement:", err.message);
     return interaction.editReply({
-      content: `${e("error")}Impossible de vérifier le paiement : \`${err.message}\``,
+      content: `${e("error")}Could not check payment: \`${err.message}\``,
     });
   }
 }
 
 async function handleRegenPaymentButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
-  if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
-  }
+  if (!deal) return deny(interaction, "Deal not found.");
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
   if (!["payment_failed", "awaiting_payment"].includes(deal.status) && deal.payment_id) {
     // awaiting without usable payment also ok via payment_failed
   }
   if (!["payment_failed", "awaiting_payment"].includes(deal.status)) {
-    return deny(interaction, "Impossible de régénérer une adresse à ce stade.");
+    return deny(interaction, "Can't regenerate an address at this stage.");
   }
 
   await interaction.deferUpdate();
@@ -322,20 +399,19 @@ async function handleRegenPaymentButton(interaction, dealCode) {
 
 async function handleReleaseButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (deal.status !== "funds_held" && !(deal.status === "disputed" && isStaff(interaction.member))) {
     // release from funds_held only here; staff dispute uses staff_release
     if (deal.status !== "funds_held") {
-      return deny(interaction, "Les fonds ne sont pas encore en escrow.");
+      return deny(interaction, "Funds are not in escrow yet.");
     }
   }
-  if (interaction.user.id !== deal.buyer_id && !isStaff(interaction.member)) {
-    return deny(interaction, "Seul l'acheteur (ou le staff) peut libérer les fonds.");
-  }
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
   if (!deal.seller_wallet) {
     return deny(
       interaction,
-      "Le vendeur doit d'abord renseigner son adresse LTC (bouton Adresse de retrait)."
+      "The seller must first set their LTC address (Seller address button)."
     );
   }
 
@@ -375,8 +451,15 @@ async function handleReleaseButton(interaction, dealCode) {
       flags: MessageFlags.IsComponentsV2,
     });
 
+    await logAdmin(interaction.client, `Payout broadcast #${dealCodeTag(dealCode)}`, [
+      `${e("release")}Transaction broadcast to seller`,
+      formatTxidLine(result.payoutId),
+      `${e("wallet")}**To** — \`${deal.seller_wallet}\``,
+      ...formatBuyerSellerLines(deal),
+    ]);
+
     return interaction.editReply({
-      content: `${e("success")}Payout initié vers le vendeur.`,
+      content: `${e("success")}Payout started to the seller.`,
     });
   } catch (err) {
     console.error("Payout vendeur:", err.message);
@@ -393,25 +476,24 @@ async function handleReleaseButton(interaction, dealCode) {
 
     return interaction.editReply({
       content:
-        `${e("error")}Payout échoué : \`${err.message}\`\n` +
-        `Le deal reste en **fonds sécurisés** — tu peux réessayer.`,
+        `${e("error")}Payout failed: \`${err.message}\`\n` +
+        `The deal stays in **secured funds** — you can retry.`,
     });
   }
 }
 
 async function handleSellerWalletButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (!["funds_held", "disputed"].includes(deal.status)) {
-    return deny(interaction, "L'adresse ne peut être définie qu'une fois les fonds sécurisés.");
+    return deny(interaction, "The address can only be set once funds are secured.");
   }
-  if (interaction.user.id !== deal.seller_id && !isStaff(interaction.member)) {
-    return deny(interaction, "Seul le vendeur (ou le staff) peut définir l'adresse de retrait.");
-  }
+  const blocked = denyUnlessSellerOnly(interaction, deal);
+  if (blocked) return blocked;
 
   const modal = new ModalBuilder()
     .setCustomId(`deal_seller_wallet_modal:${dealCode}`)
-    .setTitle("Adresse LTC de retrait");
+    .setTitle("LTC withdrawal address");
 
   const walletInput = new TextInputBuilder()
     .setCustomId("seller_wallet")
@@ -425,7 +507,7 @@ async function handleSellerWalletButton(interaction, dealCode) {
   }
 
   const walletLabel = new LabelBuilder()
-    .setLabel("Adresse Litecoin du vendeur")
+    .setLabel("Seller's Litecoin address")
     .setTextInputComponent(walletInput);
 
   modal.addLabelComponents(walletLabel);
@@ -435,16 +517,15 @@ async function handleSellerWalletButton(interaction, dealCode) {
 async function handleSellerWalletModal(interaction) {
   const dealCode = interaction.customId.split(":")[1];
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
-  if (interaction.user.id !== deal.seller_id && !isStaff(interaction.member)) {
-    return deny(interaction, "Seul le vendeur (ou le staff) peut définir l'adresse de retrait.");
-  }
+  if (!deal) return deny(interaction, "Deal not found.");
+  const blocked = denyUnlessSellerOnly(interaction, deal);
+  if (blocked) return blocked;
 
   const wallet = interaction.fields.getTextInputValue("seller_wallet").trim();
   if (!isValidLtcAddress(wallet)) {
     return deny(
       interaction,
-      "Adresse LTC invalide. Utilise une adresse Litecoin (L… / M… / ltc1…)."
+      "Invalid LTC address. Use a Litecoin address (L… / M… / ltc1…)."
     );
   }
 
@@ -457,7 +538,7 @@ async function handleSellerWalletModal(interaction) {
   const updatedDeal = getDealByCode(dealCode);
 
   await interaction.reply({
-    content: `${e("success")}Adresse de retrait enregistrée : \`${wallet}\``,
+    content: `${e("success")}Withdrawal address saved: \`${wallet}\``,
     flags: MessageFlags.Ephemeral,
   });
 
@@ -469,20 +550,20 @@ async function handleSellerWalletModal(interaction) {
 
 async function handleDisputeButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (!["funds_held", "awaiting_payment", "payment_failed"].includes(deal.status)) {
-    return deny(interaction, "Aucun litige ne peut être ouvert à ce stade.");
+    return deny(interaction, "A dispute can't be opened at this stage.");
   }
   if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
+    return deny(interaction, "This deal doesn't involve you.");
   }
 
   const modal = new ModalBuilder()
     .setCustomId(`deal_dispute_modal:${dealCode}`)
-    .setTitle("Ouvrir un litige");
+    .setTitle("Open a dispute");
 
   const reasonLabel = new LabelBuilder()
-    .setLabel("Motif du litige")
+    .setLabel("Dispute reason")
     .setTextInputComponent(
       new TextInputBuilder()
         .setCustomId("dispute_reason")
@@ -499,13 +580,13 @@ async function handleDisputeButton(interaction, dealCode) {
 async function handleDisputeModal(interaction) {
   const dealCode = interaction.customId.split(":")[1];
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (!isParticipant(deal, interaction.user.id) && !isStaff(interaction.member)) {
-    return deny(interaction, "Ce deal ne te concerne pas.");
+    return deny(interaction, "This deal doesn't involve you.");
   }
 
   const reason = interaction.fields.getTextInputValue("dispute_reason").trim();
-  if (!reason) return deny(interaction, "Le motif du litige est obligatoire.");
+  if (!reason) return deny(interaction, "A dispute reason is required.");
 
   db.prepare(
     `UPDATE deals
@@ -522,20 +603,27 @@ async function handleDisputeModal(interaction) {
     components: [buildDisputeContainer(updatedDeal, interaction.user.id)],
     flags: MessageFlags.IsComponentsV2,
   });
+
+  await logAdmin(interaction.client, `Dispute opened #${dealCodeTag(dealCode)}`, [
+    `${e("dispute")}Opened by <@${interaction.user.id}>`,
+    `**Reason** — ${reason.slice(0, 300)}`,
+    ...formatBuyerSellerLines(updatedDeal),
+    formatTxidLine(updatedDeal.payout_id),
+  ]);
 }
 
 async function handleStaffReleaseButton(interaction, dealCode) {
   if (!isStaff(interaction.member)) {
-    return deny(interaction, "Réservé au staff.");
+    return deny(interaction, "Staff only.");
   }
 
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (deal.status !== "disputed" && deal.status !== "funds_held") {
-    return deny(interaction, "Libération staff impossible à ce stade.");
+    return deny(interaction, "Staff release isn't possible at this stage.");
   }
   if (!deal.seller_wallet) {
-    return deny(interaction, "Le vendeur doit d'abord avoir une adresse LTC.");
+    return deny(interaction, "The seller must have an LTC address first.");
   }
 
   // Réutilise la logique release
@@ -548,13 +636,13 @@ async function handleStaffReleaseButton(interaction, dealCode) {
 
 async function handleStaffResolveButton(interaction, dealCode) {
   if (!isStaff(interaction.member)) {
-    return deny(interaction, "Réservé au staff.");
+    return deny(interaction, "Staff only.");
   }
 
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
   if (deal.status !== "disputed") {
-    return deny(interaction, "Ce deal n'est pas en litige.");
+    return deny(interaction, "This deal is not in dispute.");
   }
 
   db.prepare(
@@ -565,28 +653,347 @@ async function handleStaffResolveButton(interaction, dealCode) {
      WHERE deal_code = @deal_code`
   ).run({ mediator_id: interaction.user.id, deal_code: dealCode });
 
-  await interaction.update({ components: [] });
-  await interaction.channel.send({
-    content:
-      `${e("staff")}Litige #${dealCode} clôturé par <@${interaction.user.id}>.\n` +
-      `${e("warning")}Aucun payout auto n'a été déclenché — gérez un éventuel remboursement depuis OxaPay.`,
-  });
-  await interaction.channel.send({
-    components: [buildCloseTicketContainer(getDealByCode(dealCode), interaction.user.id)],
+  const updated = getDealByCode(dealCode);
+
+  await interaction.update({
+    components: [buildCloseTicketContainer(updated, interaction.user.id)],
     flags: MessageFlags.IsComponentsV2,
   });
+
+  await interaction.channel.send({
+    content:
+      `${e("staff")}Dispute #${dealCodeTag(dealCode)} closed by <@${interaction.user.id}> **without auto payout**.\n` +
+      `${e("warning")}If funds remain on the escrow address, manage them manually with the seed.`,
+  });
+
+  await logAdmin(interaction.client, `Dispute closed #${dealCodeTag(dealCode)}`, [
+    `${e("staff")}Closed without payout by <@${interaction.user.id}>`,
+    `${e("product")}**Produit** — ${updated.product}`,
+    ...formatBuyerSellerLines(updated),
+    formatTxidLine(updated.payout_id),
+  ]);
+}
+
+async function handleStaffRefundButton(interaction, dealCode) {
+  if (!isStaff(interaction.member)) {
+    return deny(interaction, "Staff only.");
+  }
+
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal not found.");
+  if (!["disputed", "funds_held"].includes(deal.status)) {
+    return deny(interaction, "Refund isn't possible at this stage.");
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const detected = await findBuyerRefundAddress(deal);
+    const buyerWallet = detected.address;
+
+    db.prepare(
+      `UPDATE deals
+       SET buyer_wallet = @buyer_wallet,
+           mediator_id = @mediator_id,
+           updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({
+      buyer_wallet: buyerWallet,
+      mediator_id: interaction.user.id,
+      deal_code: dealCode,
+    });
+
+    const result = await refundToBuyer(getDealByCode(dealCode), buyerWallet);
+
+    db.prepare(
+      `UPDATE deals
+       SET status = 'refunding',
+           payout_id = @payout_id,
+           payout_status = @payout_status,
+           payout_error = NULL,
+           updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({
+      payout_id: result.payoutId,
+      payout_status: result.status || "processing",
+      deal_code: dealCode,
+    });
+
+    const updated = getDealByCode(dealCode);
+
+    await interaction.channel.send({
+      components: [buildRefundPendingContainer(updated)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+
+    await logAdmin(interaction.client, `Refund broadcast #${dealCodeTag(dealCode)}`, [
+      `${e("money")}Auto refund started by <@${interaction.user.id}>`,
+      `${e("wallet")}**Address (detected)** — \`${buyerWallet}\``,
+      formatTxidLine(result.payoutId),
+      ...formatBuyerSellerLines(updated),
+      `${e("clock")}Awaiting blockchain confirmation`,
+    ]);
+
+    return interaction.editReply({
+      content: `${e("success")}Refund started to \`${buyerWallet}\` — confirmation in progress.`,
+    });
+  } catch (err) {
+    console.error("Remboursement auto:", err.message);
+    db.prepare(
+      `UPDATE deals SET payout_error = @err, updated_at = datetime('now') WHERE deal_code = @deal_code`
+    ).run({ err: err.message, deal_code: dealCode });
+
+    return interaction.editReply({
+      content:
+        `${e("warning")}Auto-detect failed: \`${err.message}\`\n` +
+        `You can enter the LTC address manually:`,
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`deal_staff_refund_manual:${dealCode}`)
+            .setLabel("Enter LTC address")
+            .setStyle(ButtonStyle.Primary)
+        ),
+      ],
+    });
+  }
+}
+
+async function handleStaffRefundManualButton(interaction, dealCode) {
+  if (!isStaff(interaction.member)) {
+    return deny(interaction, "Staff only.");
+  }
+
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal not found.");
+
+  const modal = new ModalBuilder()
+    .setCustomId(`deal_staff_refund_modal:${dealCode}`)
+    .setTitle("Refund customer");
+
+  const walletInput = new TextInputBuilder()
+    .setCustomId("buyer_wallet")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(100)
+    .setPlaceholder("ltc1... ou L...");
+  if (deal.buyer_wallet) walletInput.setValue(deal.buyer_wallet);
+
+  modal.addLabelComponents(
+    new LabelBuilder()
+      .setLabel("Customer's LTC address")
+      .setTextInputComponent(walletInput)
+  );
+  await interaction.showModal(modal);
+}
+
+async function handleStaffRefundModal(interaction) {
+  if (!isStaff(interaction.member)) {
+    return deny(interaction, "Staff only.");
+  }
+
+  const dealCode = interaction.customId.split(":")[1];
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal not found.");
+  if (!["disputed", "funds_held"].includes(deal.status)) {
+    return deny(interaction, "Refund isn't possible at this stage.");
+  }
+
+  const buyerWallet = interaction.fields.getTextInputValue("buyer_wallet").trim();
+  if (!isValidLtcAddress(buyerWallet)) {
+    return deny(interaction, "Invalid LTC address.");
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  db.prepare(
+    `UPDATE deals
+     SET buyer_wallet = @buyer_wallet,
+         mediator_id = @mediator_id,
+         updated_at = datetime('now')
+     WHERE deal_code = @deal_code`
+  ).run({
+    buyer_wallet: buyerWallet,
+    mediator_id: interaction.user.id,
+    deal_code: dealCode,
+  });
+
+  try {
+    const result = await refundToBuyer(getDealByCode(dealCode), buyerWallet);
+
+    db.prepare(
+      `UPDATE deals
+       SET status = 'refunding',
+           payout_id = @payout_id,
+           payout_status = @payout_status,
+           payout_error = NULL,
+           updated_at = datetime('now')
+       WHERE deal_code = @deal_code`
+    ).run({
+      payout_id: result.payoutId,
+      payout_status: result.status || "processing",
+      deal_code: dealCode,
+    });
+
+    const updated = getDealByCode(dealCode);
+
+    await interaction.channel.send({
+      components: [buildRefundPendingContainer(updated)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+
+    await logAdmin(interaction.client, `Refund broadcast #${dealCodeTag(dealCode)}`, [
+      `${e("money")}Refund started by <@${interaction.user.id}>`,
+      `${e("wallet")}**Address** — \`${buyerWallet}\``,
+      formatTxidLine(result.payoutId),
+      ...formatBuyerSellerLines(updated),
+      `${e("clock")}Awaiting blockchain confirmation`,
+    ]);
+
+    return interaction.editReply({
+      content: `${e("success")}Refund started — confirmation in progress.`,
+    });
+  } catch (err) {
+    console.error("Remboursement:", err.message);
+    db.prepare(
+      `UPDATE deals SET payout_error = @err, updated_at = datetime('now') WHERE deal_code = @deal_code`
+    ).run({ err: err.message, deal_code: dealCode });
+
+    return interaction.editReply({
+      content: `${e("error")}Refund failed: \`${err.message}\``,
+    });
+  }
+}
+
+async function handleReviewButton(interaction, dealCode) {
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal not found.");
+  if (deal.status !== "awaiting_review") {
+    return deny(interaction, "The review is only available after payout confirmation.");
+  }
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
+  if (deal.review_at) {
+    return deny(interaction, "A review was already submitted for this deal.");
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId(`deal_review_modal:${dealCode}`)
+    .setTitle("Bot review");
+
+  const ratingLabel = new LabelBuilder()
+    .setLabel("Rating")
+    .setStringSelectMenuComponent(
+      new StringSelectMenuBuilder()
+        .setCustomId("review_rating")
+        .setPlaceholder("Choose a rating")
+        .setRequired(true)
+        .addOptions(
+          new StringSelectMenuOptionBuilder().setLabel("★★★★★").setValue("5"),
+          new StringSelectMenuOptionBuilder().setLabel("★★★★☆").setValue("4"),
+          new StringSelectMenuOptionBuilder().setLabel("★★★☆☆").setValue("3"),
+          new StringSelectMenuOptionBuilder().setLabel("★★☆☆☆").setValue("2"),
+          new StringSelectMenuOptionBuilder().setLabel("★☆☆☆☆").setValue("1")
+        )
+    );
+
+  const textLabel = new LabelBuilder()
+    .setLabel("Your review")
+    .setTextInputComponent(
+      new TextInputBuilder()
+        .setCustomId("review_text")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMaxLength(800)
+        .setPlaceholder("Your experience with the escrow bot…")
+    );
+
+  modal.addLabelComponents(ratingLabel, textLabel);
+  await interaction.showModal(modal);
+}
+
+async function handleReviewModal(interaction) {
+  const dealCode = interaction.customId.split(":")[1];
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal not found.");
+  if (deal.status !== "awaiting_review") {
+    return deny(interaction, "Reviews are no longer accepted for this deal.");
+  }
+  const blocked = denyUnlessBuyer(interaction, deal);
+  if (blocked) return blocked;
+  if (deal.review_at) {
+    return deny(interaction, "A review was already submitted.");
+  }
+
+  const rating = Number(interaction.fields.getStringSelectValues("review_rating")[0]);
+  const text = interaction.fields.getTextInputValue("review_text").trim();
+  const anonymous = isUserAnonymous(interaction.user.id);
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return deny(interaction, "Invalid rating.");
+  }
+  if (!text) {
+    return deny(interaction, "The review can't be empty.");
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  db.prepare(
+    `UPDATE deals
+     SET review_text = @review_text,
+         review_rating = @review_rating,
+         review_anonymous = @review_anonymous,
+         review_at = datetime('now'),
+         updated_at = datetime('now')
+     WHERE deal_code = @deal_code`
+  ).run({
+    review_text: text,
+    review_rating: rating,
+    review_anonymous: anonymous ? 1 : 0,
+    deal_code: dealCode,
+  });
+
+  const updated = getDealByCode(dealCode);
+  const reviewContainer = buildPublicReviewContainer(updated, {
+    botId: interaction.client.user?.id,
+  });
+
+  try {
+    await finalizeDealAfterReview(interaction.client, updated, {
+      reviewContainer,
+      guildId: interaction.guildId,
+      reviewerId: interaction.user.id,
+      guild: interaction.guild,
+      member: interaction.member,
+    });
+    return interaction.editReply({
+      content: `${e("success")}Review saved. The deal is closing — transcript is being sent.`,
+    });
+  } catch (err) {
+    console.error("Finalisation deal:", err);
+    return interaction.editReply({
+      content: `${e("error")}Review saved but finalization incomplete: \`${err.message}\``,
+    });
+  }
 }
 
 async function handleCloseButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
-  if (!deal) return deny(interaction, "Deal introuvable.");
+  if (!deal) return deny(interaction, "Deal not found.");
 
   if (!isStaff(interaction.member)) {
-    return deny(interaction, "Seul le staff peut fermer ce salon.");
+    return deny(interaction, "Only staff can close this channel.");
   }
 
+  await logAdmin(interaction.client, `Channel closed #${dealCodeTag(dealCode)}`, [
+    `${e("close")}Closed by <@${interaction.user.id}>`,
+    `**Deal status** — ${deal.status}`,
+    ...formatBuyerSellerLines(deal),
+    formatTxidLine(deal.payout_id),
+  ]);
+
   await interaction.reply({
-    content: `${e("close")}Salon fermé par <@${interaction.user.id}>. Suppression dans 5 secondes...`,
+    content: `${e("close")}Channel closed by <@${interaction.user.id}>. Deleting in 5 seconds...`,
   });
   setTimeout(() => {
     interaction.channel.delete().catch(() => {});
@@ -607,6 +1014,11 @@ module.exports = {
   handleDisputeModal,
   handleStaffReleaseButton,
   handleStaffResolveButton,
+  handleStaffRefundButton,
+  handleStaffRefundManualButton,
+  handleStaffRefundModal,
   handleCloseButton,
+  handleReviewButton,
+  handleReviewModal,
   getDealByCode,
 };

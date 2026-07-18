@@ -6,16 +6,35 @@ const {
   isFailedStatus,
   statusLabel,
   resolvePayoutAmount,
-} = require("./oxapay");
+  isPayoutDoneStatus,
+  isPayoutFailedStatus,
+  findFundingTxid,
+  comparePaymentAmount,
+  createLtcPayment,
+  sweepToOwnerWallet,
+  getOwnerLtcWallet,
+} = require("./ltcWallet");
 const {
   buildPaymentContainer,
   buildFundsHeldContainer,
   buildPaymentFailedContainer,
-  buildReleasedContainer,
+  buildPaymentDetectedContainer,
+  buildPaymentRetryContainer,
+  buildPayoutConfirmedContainer,
+  buildReviewRequestContainer,
+  buildCloseTicketContainer,
 } = require("./dealContainer");
 const { MessageFlags } = require("discord.js");
+const { e } = require("../config");
+const {
+  logAdmin,
+  dealCodeTag,
+  formatTxidLine,
+  formatBuyerSellerLines,
+} = require("./dealLogger");
+const { formatLtcAmount } = require("./ltcPrice");
 
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 5_000;
 /** @type {import('discord.js').Client | null} */
 let client = null;
 /** @type {ReturnType<typeof setInterval> | null} */
@@ -53,54 +72,187 @@ function getPendingPayoutDeals() {
   return db
     .prepare(
       `SELECT * FROM deals
-       WHERE status = 'released'
+       WHERE status IN ('released', 'refunding')
          AND payout_id IS NOT NULL
          AND payout_id != ''
          AND payout_status IS NOT NULL
-         AND payout_status NOT IN ('finished', 'confirmed', 'failed', 'rejected', 'expired', 'canceled')`
+         AND payout_status NOT IN ('finished', 'confirmed', 'completed', 'done', 'failed', 'rejected', 'expired', 'canceled', 'error')`
     )
     .all();
 }
 
+async function regeneratePaymentAfterIncorrect(deal) {
+  const keptExpected = Number(deal.expected_pay_amount ?? deal.pay_amount);
+  const payment = await createLtcPayment(deal);
+  const payAmount = Number.isFinite(keptExpected) && keptExpected > 0
+    ? keptExpected
+    : payment.pay_amount;
+
+  db.prepare(
+    `UPDATE deals
+     SET payment_id = @payment_id,
+         pay_address = @pay_address,
+         pay_amount = @pay_amount,
+         expected_pay_amount = @expected_pay_amount,
+         received_pay_amount = NULL,
+         payment_status = 'waiting',
+         wallet_index = @wallet_index,
+         status = 'awaiting_payment',
+         updated_at = datetime('now')
+     WHERE deal_code = @deal_code`
+  ).run({
+    payment_id: String(payment.payment_id),
+    pay_address: payment.pay_address,
+    pay_amount: payAmount,
+    expected_pay_amount: payAmount,
+    wallet_index: payment.wallet_index,
+    deal_code: deal.deal_code,
+  });
+
+  const updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
+  if (!client || !updated.channel_id) return updated;
+
+  try {
+    const channel = await client.channels.fetch(updated.channel_id);
+    if (channel?.isTextBased()) {
+      const msg = await channel.send({
+        components: [buildPaymentRetryContainer(updated)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      db.prepare(
+        `UPDATE deals SET payment_message_id = @id WHERE deal_code = @deal_code`
+      ).run({ id: msg.id, deal_code: updated.deal_code });
+    }
+  } catch (err) {
+    console.error(`Retry payment msg #${deal.deal_code}:`, err.message);
+  }
+
+  return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
+}
+
+async function publishPaymentDetected(deal) {
+  if (!client || !deal.channel_id) return;
+  try {
+    const channel = await client.channels.fetch(deal.channel_id);
+    if (!channel?.isTextBased()) return;
+    await channel.send({
+      components: [buildPaymentDetectedContainer(deal)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.error(`Payment detected msg #${deal.deal_code}:`, err.message);
+  }
+}
+
 async function refreshDealPayment(deal) {
   if (!deal?.payment_id || !client) return deal;
+  if (deal.payment_status === "incorrect_processing") return deal;
 
+  const prevStatus = deal.payment_status;
   const payment = await getPaymentStatus(deal.payment_id);
   const paymentStatus = payment.payment_status;
-  const resolvedAmount = resolvePayoutAmount(deal, payment);
 
   db.prepare(
     `UPDATE deals
      SET payment_status = @payment_status,
-         pay_amount = COALESCE(@pay_amount, pay_amount),
          pay_address = COALESCE(@pay_address, pay_address),
          updated_at = datetime('now')
      WHERE deal_code = @deal_code`
   ).run({
     payment_status: paymentStatus,
-    pay_amount: resolvedAmount,
     pay_address: payment.pay_address || null,
     deal_code: deal.deal_code,
   });
 
   let updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
 
+  // Mempool detection → new container (before confirmed)
+  if (
+    updated.status === "awaiting_payment" &&
+    paymentStatus === "pending" &&
+    prevStatus !== "pending" &&
+    prevStatus !== "paid"
+  ) {
+    await publishPaymentDetected(updated);
+  }
+
   if (isPaidStatus(paymentStatus) && updated.status === "awaiting_payment") {
+    const received =
+      resolvePayoutAmount(updated, payment) ?? Number(payment.actually_paid);
+    const cmp = comparePaymentAmount(updated, received);
+
+    // Sous-paiement → sweep owner silencieux + nouvelle adresse (ticket sans mention owner)
+    if (cmp === "under") {
+      if (!getOwnerLtcWallet()) {
+        console.error(
+          `[payment] Underpayment #${updated.deal_code} mais OWNER_LTC_WALLET manquant`
+        );
+        await logAdmin(client, `Underpayment failed #${dealCodeTag(updated.deal_code)}`, [
+          `${e("error")}OWNER_LTC_WALLET missing — funds not routed`,
+          `${e("ltc")}**Received** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+          `${e("ltc")}**Expected** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+          ...formatBuyerSellerLines(updated),
+        ]);
+        return updated;
+      }
+
+      db.prepare(
+        `UPDATE deals
+         SET payment_status = 'incorrect_processing',
+             received_pay_amount = @received,
+             updated_at = datetime('now')
+         WHERE deal_code = @deal_code`
+      ).run({ received, deal_code: updated.deal_code });
+
+      try {
+        const sweep = await sweepToOwnerWallet(updated);
+        await logAdmin(client, `Underpayment #${dealCodeTag(updated.deal_code)}`, [
+          `${e("warning")}Insufficient amount — routed to owner (internal)`,
+          `${e("ltc")}**Received** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+          `${e("ltc")}**Expected** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+          formatTxidLine(sweep.payoutId),
+          ...formatBuyerSellerLines(updated),
+        ]);
+      } catch (err) {
+        console.error(`Sweep underpay #${updated.deal_code}:`, err.message);
+        db.prepare(
+          `UPDATE deals SET payment_status = 'waiting', updated_at = datetime('now')
+           WHERE deal_code = ?`
+        ).run(updated.deal_code);
+        await logAdmin(client, `Underpayment sweep failed #${dealCodeTag(updated.deal_code)}`, [
+          `${e("error")}${err.message}`,
+        ]);
+        return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
+      }
+
+      return regeneratePaymentAfterIncorrect(updated);
+    }
+
+    // Exact ou surpaiement → escrow (surplus géré au payout vendeur, silencieux)
     db.prepare(
       `UPDATE deals
        SET status = 'funds_held',
            paid_at = datetime('now'),
-           payment_status = @payment_status,
-           pay_amount = COALESCE(@pay_amount, pay_amount),
+           payment_status = 'paid',
+           received_pay_amount = @received,
            updated_at = datetime('now')
        WHERE deal_code = @deal_code`
     ).run({
-      payment_status: paymentStatus,
-      pay_amount: resolvedAmount,
-      deal_code: deal.deal_code,
+      received,
+      deal_code: updated.deal_code,
     });
     updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
     await publishFundsHeld(updated);
+    const fundingTxid = await findFundingTxid(updated).catch(() => null);
+    await logAdmin(client, `Payment received #${dealCodeTag(updated.deal_code)}`, [
+      `${e("shield")}Funds secured in escrow`,
+      `${e("ltc")}**Expected** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+      `${e("ltc")}**Received** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+      cmp === "over" ? `${e("info")}Overpayment — surplus to owner at payout (internal)` : null,
+      `${e("wallet")}**Adresse** — \`${updated.pay_address || "—"}\``,
+      formatTxidLine(fundingTxid),
+      ...formatBuyerSellerLines(updated),
+    ]);
     return updated;
   }
 
@@ -120,7 +272,7 @@ async function refreshDealPayment(deal) {
     return updated;
   }
 
-  await updatePaymentMessage(updated, buildPaymentContainer(updated));
+  // Ne pas modifier le container d'adresse pour les simples changements de statut
   return updated;
 }
 
@@ -130,6 +282,10 @@ async function refreshDealPayout(deal) {
   try {
     const payout = await getPayoutStatus(deal.payout_id);
     const payoutStatus = payout.status || deal.payout_status;
+    const prevStatus = deal.payout_status;
+
+    // Pas de changement → silence (évite le spam processing)
+    if (payoutStatus === prevStatus) return deal;
 
     db.prepare(
       `UPDATE deals
@@ -139,13 +295,99 @@ async function refreshDealPayout(deal) {
 
     const updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
 
-    if (deal.channel_id) {
+    const newlyConfirmed =
+      isPayoutDoneStatus(payoutStatus) && !isPayoutDoneStatus(prevStatus);
+    const newlyFailed =
+      isPayoutFailedStatus(payoutStatus) && !isPayoutFailedStatus(prevStatus);
+
+    if ((newlyConfirmed || newlyFailed) && deal.channel_id) {
       try {
         const channel = await client.channels.fetch(deal.channel_id);
         if (channel?.isTextBased()) {
+          if (newlyConfirmed) {
+            // Refund staff → attendre confirm puis container de fermeture
+            if (deal.status === "refunding") {
+              db.prepare(
+                `UPDATE deals
+                 SET status = 'refunded',
+                     payout_status = @payout_status,
+                     updated_at = datetime('now')
+                 WHERE deal_code = @deal_code`
+              ).run({ payout_status: payoutStatus, deal_code: deal.deal_code });
+
+              const refunded = db
+                .prepare("SELECT * FROM deals WHERE deal_code = ?")
+                .get(deal.deal_code);
+
+              await channel.send({
+                components: [
+                  buildCloseTicketContainer(refunded, refunded.mediator_id, {
+                    reason: "refunded",
+                  }),
+                ],
+                flags: MessageFlags.IsComponentsV2,
+              });
+
+              await logAdmin(client, `Refund confirmed #${dealCodeTag(deal.deal_code)}`, [
+                `${e("success")}Funds returned to customer`,
+                formatTxidLine(deal.payout_id),
+                `${e("wallet")}**Adresse** — \`${deal.buyer_wallet || "—"}\``,
+                ...formatBuyerSellerLines(refunded),
+              ]);
+
+              return refunded;
+            }
+
+            db.prepare(
+              `UPDATE deals
+               SET status = 'awaiting_review',
+                   payout_status = @payout_status,
+                   updated_at = datetime('now')
+               WHERE deal_code = @deal_code`
+            ).run({ payout_status: payoutStatus, deal_code: deal.deal_code });
+
+            const confirmed = db
+              .prepare("SELECT * FROM deals WHERE deal_code = ?")
+              .get(deal.deal_code);
+
+            await channel.send({
+              components: [buildPayoutConfirmedContainer(confirmed)],
+              flags: MessageFlags.IsComponentsV2,
+            });
+
+            if (!confirmed.review_prompted) {
+              await channel.send({
+                components: [buildReviewRequestContainer(confirmed)],
+                flags: MessageFlags.IsComponentsV2,
+              });
+              db.prepare(
+                `UPDATE deals SET review_prompted = 1 WHERE deal_code = ?`
+              ).run(deal.deal_code);
+            }
+
+            await logAdmin(client, `Payout confirmed #${dealCodeTag(deal.deal_code)}`, [
+              `${e("success")}Funds sent to seller`,
+              formatTxidLine(deal.payout_id),
+              `${e("wallet")}**Adresse** — \`${deal.seller_wallet || "—"}\``,
+              ...formatBuyerSellerLines(confirmed),
+              `${e("next")}Waiting for customer review`,
+            ]);
+
+            return db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
+          }
+
+          const failLabel = deal.status === "refunding" ? "Refund" : "Payout";
           await channel.send({
-            content: `Payout #${deal.deal_code} → statut **${payoutStatus}**`,
+            content:
+              `${e("error")}${failLabel} #${dealCodeTag(deal.deal_code)} failed — status **${payoutStatus}**.\n` +
+              `${formatTxidLine(deal.payout_id) || ""}`,
           }).catch(() => {});
+
+          await logAdmin(client, `${failLabel} failed #${dealCodeTag(deal.deal_code)}`, [
+            `${e("error")}Statut **${payoutStatus}**`,
+            formatTxidLine(deal.payout_id),
+            ...formatBuyerSellerLines(deal),
+          ]);
         }
       } catch {
         // ignore
@@ -166,20 +408,7 @@ async function publishFundsHeld(deal) {
     const channel = await client.channels.fetch(deal.channel_id);
     if (!channel?.isTextBased()) return;
 
-    if (deal.payment_message_id) {
-      try {
-        const msg = await channel.messages.fetch(deal.payment_message_id);
-        await msg.edit({
-          components: [
-            buildPaymentContainer({ ...deal, payment_status: deal.payment_status || "paid" }),
-          ],
-          flags: MessageFlags.IsComponentsV2,
-        });
-      } catch {
-        // message peut avoir été supprimé
-      }
-    }
-
+    // Ne pas modifier le container d'adresse : envoyer un nouveau message
     const fundsMsg = await channel.send({
       components: [buildFundsHeldContainer(deal)],
       flags: MessageFlags.IsComponentsV2,

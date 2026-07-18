@@ -4,9 +4,8 @@ const { createDealChannel } = require("../utils/dealChannel");
 const { generateUniqueDealCode } = require("../utils/dealCode");
 const { buildRoleSelectionContainer } = require("../utils/dealContainer");
 const { fiatToLtc } = require("../utils/ltcPrice");
-const { assertAboveMinAmount } = require("../utils/oxapay");
 const { MessageFlags } = require("discord.js");
-
+const { logAdmin, dealCodeTag } = require("../utils/dealLogger");
 const { e } = config;
 
 const CURRENCY_MAP = {
@@ -24,14 +23,14 @@ async function handleDealModal(interaction) {
   // --- Validation ID Discord (snowflake) ---
   if (!/^\d{17,20}$/.test(partnerId)) {
     return interaction.reply({
-      content: `${e("error")}ID Discord invalide. Copie l'ID exact (clic droit sur le membre → Copier l'ID).`,
+      content: `${e("error")}Invalid Discord ID. Copy the exact ID (right-click member → Copy ID).`,
       flags: MessageFlags.Ephemeral,
     });
   }
 
   if (partnerId === interaction.user.id) {
     return interaction.reply({
-      content: `${e("error")}Tu ne peux pas faire un deal avec toi-même.`,
+      content: `${e("error")}You can't open a deal with yourself.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -42,14 +41,14 @@ async function handleDealModal(interaction) {
     partnerMember = await interaction.guild.members.fetch(partnerId);
   } catch {
     return interaction.reply({
-      content: `${e("error")}Ce membre est introuvable sur ce serveur.`,
+      content: `${e("error")}That member was not found on this server.`,
       flags: MessageFlags.Ephemeral,
     });
   }
 
   if (partnerMember.user.bot) {
     return interaction.reply({
-      content: `${e("error")}Tu ne peux pas faire un deal avec un bot.`,
+      content: `${e("error")}You can't open a deal with a bot.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -58,7 +57,7 @@ async function handleDealModal(interaction) {
   const price = Number(priceRaw.replace(",", "."));
   if (!Number.isFinite(price) || price <= 0) {
     return interaction.reply({
-      content: `${e("error")}Prix invalide. Entre un nombre positif, sans symbole (ex: 25.50).`,
+      content: `${e("error")}Invalid price. Enter a positive number with no symbol (e.g. 25.50).`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -67,7 +66,7 @@ async function handleDealModal(interaction) {
   const currency = CURRENCY_MAP[currencyValue];
   if (!currency) {
     return interaction.reply({
-      content: `${e("error")}Devise invalide. Choisis € ou $ dans le menu.`,
+      content: `${e("error")}Invalid currency. Pick € or $ from the menu.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -75,22 +74,9 @@ async function handleDealModal(interaction) {
   // --- Validation crypto (menu) ---
   if (crypto !== "LTC") {
     return interaction.reply({
-      content: `${e("error")}Crypto non supportée pour le moment. Choisis Litecoin (LTC).`,
+      content: `${e("error")}Unsupported crypto for now. Choose Litecoin (LTC).`,
       flags: MessageFlags.Ephemeral,
     });
-  }
-
-  // --- Minimum OxaPay (~0.002 LTC, bloquant si cours dispo) ---
-  try {
-    await assertAboveMinAmount({ price, currency, crypto });
-  } catch (err) {
-    if (err.code === "BELOW_MINIMUM") {
-      return interaction.reply({
-        content: `${e("error")}${err.message}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-    console.warn("Min-amount check au formulaire:", err.message);
   }
 
   // --- Conversion fiat -> crypto pour affichage (non bloquant si API down) ---
@@ -152,9 +138,18 @@ async function handleDealModal(interaction) {
   });
 
   await interaction.reply({
-    content: `${e("success")}Deal #${dealCode} créé. Rendez-vous dans ${channel} pour continuer.`,
+    content: `${e("success")}Deal #${dealCodeTag(dealCode)} created. Continue in ${channel}.`,
     flags: MessageFlags.Ephemeral,
   });
+
+  await logAdmin(interaction.client, `Deal created #${dealCodeTag(dealCode)}`, [
+    `${e("deal")}Channel ${channel}`,
+    `${e("product")}**Product** — ${product}`,
+    `${e("money")}**Price** — ${price}${currency}`,
+    `${e("users")}Participants — <@${interaction.user.id}> ↔ <@${partnerId}>`,
+    `${e("buyer")}**Customer** — *to be set*`,
+    `${e("seller")}**Seller** — *to be set*`,
+  ]);
 }
 
 module.exports = { handleDealModal };

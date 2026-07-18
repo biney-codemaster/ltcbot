@@ -12,14 +12,40 @@ function validateEnv() {
     warnings.push("GUILD_ID vide → commandes globales (plus lentes à propager)");
   }
   if (!process.env.STAFF_ROLE_ID) {
-    warnings.push("STAFF_ROLE_ID vide → le staff n'aura pas accès aux salons / fermetures");
+    warnings.push("STAFF_ROLE_ID empty → staff may lack deal channel access");
   }
-  if (!process.env.OXAPAY_MERCHANT_API_KEY) {
-    errors.push("OXAPAY_MERCHANT_API_KEY manquant (création d'adresses LTC impossible)");
+  {
+    const raw = String(process.env.CUSTOMER_ROLE_ID || "").trim();
+    if (!raw) {
+      warnings.push("CUSTOMER_ROLE_ID empty → no role assigned after deal reviews");
+    } else if (!/\d{16,22}/.test(raw)) {
+      warnings.push(
+        `CUSTOMER_ROLE_ID invalid ("${raw.slice(0, 32)}") → must be the role snowflake ID`
+      );
+    }
   }
-  if (!process.env.OXAPAY_PAYOUT_API_KEY) {
+  if (!process.env.LTC_WALLET_MNEMONIC) {
     warnings.push(
-      "OXAPAY_PAYOUT_API_KEY manquant → payout vendeur impossible (libération des fonds)"
+      "LTC_WALLET_MNEMONIC vide → le bot utilisera / créera wallet.mnemonic (SAUVEGARDE-LE)"
+    );
+  }
+  if (!String(process.env.OWNER_LTC_WALLET || "").trim()) {
+    warnings.push(
+      "OWNER_LTC_WALLET vide → sous/surpaiements ne pourront pas être routés vers ton wallet"
+    );
+  }
+  if (!process.env.ADMIN_LOGS_CHANNEL_ID) {
+    warnings.push("ADMIN_LOGS_CHANNEL_ID vide → pas de logs admin / transcripts");
+  }
+  if (!process.env.PUBLIC_LOGS_CHANNEL_ID) {
+    warnings.push("PUBLIC_LOGS_CHANNEL_ID vide → pas de logs publics des deals complétés");
+  }
+  if (!process.env.REVIEWS_CHANNEL_ID) {
+    warnings.push("REVIEWS_CHANNEL_ID vide → les avis ne seront pas publiés");
+  }
+  if (!String(process.env.HOWTO_CHANNEL_ID || "").trim()) {
+    warnings.push(
+      "HOWTO_CHANNEL_ID empty → /setup How to use button needs it (or howto_channel option)"
     );
   }
 

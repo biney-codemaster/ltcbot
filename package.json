@@ -5,14 +5,19 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node -e \"require('./utils/oxapay'); require('./utils/paymentPoller'); require('./utils/dealContainer'); console.log('ok')\""
+    "test": "node -e \"require('./utils/ltcWallet'); require('./utils/paymentPoller'); require('./utils/dealContainer'); require('./utils/dealLogger'); require('./utils/transcript'); require('./utils/dealFinalize'); require('./utils/userPrefs'); require('./commands/anonymous'); require('./commands/stats'); require('./commands/howto'); require('./commands/staff'); console.log('ok')\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "better-sqlite3": "^12.11.1",
+    "bip32": "^5.0.1",
+    "bip39": "^3.1.0",
+    "bitcoinjs-lib": "^7.0.1",
     "discord.js": "^14.27.0",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "ecpair": "^3.0.1",
+    "tiny-secp256k1": "^2.2.4"
   }
 }
