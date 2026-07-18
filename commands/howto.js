@@ -1,8 +1,5 @@
 const {
   SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
@@ -12,7 +9,7 @@ const {
 } = require("discord.js");
 const config = require("../config");
 
-const { e, emojis } = config;
+const { e } = config;
 
 const data = new SlashCommandBuilder()
   .setName("howto")
@@ -96,27 +93,6 @@ function buildHowtoContainer() {
         `• Keep your transcript HTML as proof after the deal closes`
     )
   );
-
-  if (emojis.deal || emojis.escrow) {
-    const deco = new ButtonBuilder()
-      .setCustomId("escrow_deco")
-      .setStyle(ButtonStyle.Secondary);
-    if (emojis.escrow) deco.setEmoji(emojis.escrow);
-    else if (emojis.deal) deco.setEmoji(emojis.deal);
-
-    const start = new ButtonBuilder()
-      .setCustomId("escrow_start_deal")
-      .setLabel("Start a deal")
-      .setStyle(ButtonStyle.Secondary);
-
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(deco, start));
-  } else {
-    const start = new ButtonBuilder()
-      .setCustomId("escrow_start_deal")
-      .setLabel("Start a deal")
-      .setStyle(ButtonStyle.Secondary);
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(start));
-  }
 
   return container;
 }

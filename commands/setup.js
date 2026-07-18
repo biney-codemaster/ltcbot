@@ -23,7 +23,7 @@ function buildSetupContainer() {
   const container = new ContainerBuilder();
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`# ${e("escrow")}Escrow system`)
+    new TextDisplayBuilder().setContent(`# ${e("escrow")}Escrow`)
   );
 
   container.addSeparatorComponents(
@@ -32,26 +32,8 @@ function buildSetupContainer() {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("shield")}Trusted middleman between **customer** and **seller**.\n` +
-        `Funds are secured on a **dedicated Litecoin address** until delivery is confirmed.\n\n` +
-        `${e("money")}**0 service fees** — only Litecoin **network fees** apply.\n\n` +
-        `## ${e("info")}How it works\n` +
-        `1. Create a deal and private channel\n` +
-        `2. Choose roles (customer / seller)\n` +
-        `3. Mutual confirmation of terms\n` +
-        `4. LTC payment then release to the seller\n\n` +
-        `${e("lock")}**Anonymity** — use \`/anonymous\` to appear anonymous (or not) in reviews and public logs.`
-    )
-  );
-
-  container.addSeparatorComponents(
-    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
-  );
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `## ${e("deal")}New deal\n` +
-        `Click below to open a secured deal.`
+      `${e("deal")}Start a secured Litecoin deal.\n` +
+        `${e("info")}Read **How to use** for roles, payment rules, and tips.`
     )
   );
 
