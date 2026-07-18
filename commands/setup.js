@@ -19,11 +19,6 @@ const data = new SlashCommandBuilder()
   .setDescription("Post the deal panel in this channel")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
 
-function applyEmoji(button, key) {
-  if (emojis[key]) button.setEmoji(emojis[key]);
-  return button;
-}
-
 function buildSetupContainer(guildId) {
   const container = new ContainerBuilder();
 
@@ -60,16 +55,14 @@ function buildSetupContainer(guildId) {
   rowButtons.push(startButton);
 
   if (config.howtoChannelId && guildId) {
-    const howtoButton = applyEmoji(
+    rowButtons.push(
       new ButtonBuilder()
         .setLabel("How to use")
         .setStyle(ButtonStyle.Link)
         .setURL(
           `https://discord.com/channels/${guildId}/${config.howtoChannelId}`
-        ),
-      "info"
+        )
     );
-    rowButtons.push(howtoButton);
   }
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(...rowButtons));
