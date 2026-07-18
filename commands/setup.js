@@ -44,13 +44,9 @@ function buildSetupContainer(guildId, howtoChannelId) {
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
   );
 
-  const howtoLine = howtoChannelId
-    ? `\n${e("info")}Guide — <#${howtoChannelId}>`
-    : "";
-
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("deal")}Start a secured Litecoin deal.${howtoLine}`
+      `${e("deal")}Start a secured Litecoin deal.`
     )
   );
 
@@ -72,13 +68,13 @@ function buildSetupContainer(guildId, howtoChannelId) {
       .setStyle(ButtonStyle.Secondary)
   );
 
-  // Bouton secondary (toujours affiché) — ouvre un lien vers le salon au clic
-  if (howtoChannelId) {
+  // Link button — ouvre le salon directement (icône lien, pas d'éphémère)
+  if (howtoChannelId && guildId) {
     rowButtons.push(
       new ButtonBuilder()
-        .setCustomId(`escrow_howto:${howtoChannelId}`)
         .setLabel("How to use")
-        .setStyle(ButtonStyle.Secondary)
+        .setStyle(ButtonStyle.Link)
+        .setURL(`https://discord.com/channels/${guildId}/${howtoChannelId}`)
     );
   }
 
@@ -123,37 +119,4 @@ async function execute(interaction) {
   });
 }
 
-/** Bouton How to use → lien cliquable vers le salon (éphémère). */
-async function handleHowtoButton(interaction) {
-  const channelId = interaction.customId.split(":")[1];
-  const guildId = interaction.guildId;
-  if (!channelId || !/^\d{16,22}$/.test(channelId)) {
-    return interaction.reply({
-      content: `${e("error")}How to use channel is not configured.`,
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  if (!guildId) {
-    return interaction.reply({
-      content: `${e("info")}How to use → <#${channelId}>`,
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  const url = `https://discord.com/channels/${guildId}/${channelId}`;
-  await interaction.reply({
-    content: `${e("info")}How to use → <#${channelId}>`,
-    components: [
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setLabel("Open channel")
-          .setStyle(ButtonStyle.Link)
-          .setURL(url)
-      ),
-    ],
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
-module.exports = { data, execute, buildSetupContainer, handleHowtoButton };
+module.exports = { data, execute, buildSetupContainer };
