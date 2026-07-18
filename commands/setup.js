@@ -60,10 +60,6 @@ function buildSetupContainer() {
     .setLabel("Start a deal")
     .setStyle(ButtonStyle.Secondary);
 
-  if (emojis.deal) {
-    startButton.setEmoji(emojis.deal);
-  }
-
   const rowButtons = [];
 
   // Bouton décoratif en 1re position (emoji escrow) — clic silencieux
