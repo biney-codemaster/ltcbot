@@ -9,6 +9,7 @@ const {
   SeparatorSpacingSize,
   MessageFlags,
   PermissionFlagsBits,
+  ChannelType,
 } = require("discord.js");
 const config = require("../config");
 
@@ -17,9 +18,22 @@ const { e, emojis } = config;
 const data = new SlashCommandBuilder()
   .setName("setup")
   .setDescription("Post the deal panel in this channel")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addChannelOption((opt) =>
+    opt
+      .setName("howto_channel")
+      .setDescription("How-to-use channel (optional if HOWTO_CHANNEL_ID is set in .env)")
+      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+      .setRequired(false)
+  );
 
-function buildSetupContainer(guildId) {
+function resolveHowtoChannelId(interaction) {
+  const picked = interaction.options.getChannel("howto_channel");
+  if (picked?.id) return picked.id;
+  return config.getHowtoChannelId();
+}
+
+function buildSetupContainer(guildId, howtoChannelId) {
   const container = new ContainerBuilder();
 
   container.addTextDisplayComponents(
@@ -30,16 +44,15 @@ function buildSetupContainer(guildId) {
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
   );
 
+  const howtoLine = howtoChannelId
+    ? `\n${e("info")}Guide — <#${howtoChannelId}>`
+    : "";
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("deal")}Start a secured Litecoin deal.`
+      `${e("deal")}Start a secured Litecoin deal.${howtoLine}`
     )
   );
-
-  const startButton = new ButtonBuilder()
-    .setCustomId("escrow_start_deal")
-    .setLabel("Start a deal")
-    .setStyle(ButtonStyle.Secondary);
 
   const rowButtons = [];
 
@@ -52,16 +65,20 @@ function buildSetupContainer(guildId) {
     );
   }
 
-  rowButtons.push(startButton);
+  rowButtons.push(
+    new ButtonBuilder()
+      .setCustomId("escrow_start_deal")
+      .setLabel("Start a deal")
+      .setStyle(ButtonStyle.Secondary)
+  );
 
-  if (config.howtoChannelId && guildId) {
+  // Bouton secondary (toujours affiché) — ouvre un lien vers le salon au clic
+  if (howtoChannelId) {
     rowButtons.push(
       new ButtonBuilder()
+        .setCustomId(`escrow_howto:${howtoChannelId}`)
         .setLabel("How to use")
-        .setStyle(ButtonStyle.Link)
-        .setURL(
-          `https://discord.com/channels/${guildId}/${config.howtoChannelId}`
-        )
+        .setStyle(ButtonStyle.Secondary)
     );
   }
 
@@ -79,25 +96,64 @@ async function execute(interaction) {
   }
 
   const guildId = interaction.guildId;
-  if (!config.howtoChannelId) {
+  const howtoChannelId = resolveHowtoChannelId(interaction);
+  const rawEnv = String(process.env.HOWTO_CHANNEL_ID || "").trim();
+
+  if (!howtoChannelId) {
     await interaction.reply({
       content:
-        `${e("success")}Panel sent.\n` +
-        `${e("warning")}Set \`HOWTO_CHANNEL_ID\` in \`.env\` to show the **How to use** link button.`,
+        `${e("success")}Panel sent **without** How to use button.\n` +
+        `${e("warning")}Set \`HOWTO_CHANNEL_ID=...\` in \`.env\` and **restart the bot**,\n` +
+        `or run \`/setup howto_channel:#your-channel\`.\n` +
+        (rawEnv
+          ? `${e("error")}Raw value was \`${rawEnv}\` — could not parse a channel ID.`
+          : `${e("info")}Process env \`HOWTO_CHANNEL_ID\` is empty (bot may not see your .env).`),
       flags: MessageFlags.Ephemeral,
     });
   } else {
     await interaction.reply({
-      content: `${e("success")}Panel sent.`,
+      content: `${e("success")}Panel sent — How to use → <#${howtoChannelId}>`,
       flags: MessageFlags.Ephemeral,
     });
   }
 
-  const container = buildSetupContainer(guildId);
   await interaction.channel.send({
-    components: [container],
+    components: [buildSetupContainer(guildId, howtoChannelId)],
     flags: MessageFlags.IsComponentsV2,
   });
 }
 
-module.exports = { data, execute };
+/** Bouton How to use → lien cliquable vers le salon (éphémère). */
+async function handleHowtoButton(interaction) {
+  const channelId = interaction.customId.split(":")[1];
+  const guildId = interaction.guildId;
+  if (!channelId || !/^\d{16,22}$/.test(channelId)) {
+    return interaction.reply({
+      content: `${e("error")}How to use channel is not configured.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  if (!guildId) {
+    return interaction.reply({
+      content: `${e("info")}How to use → <#${channelId}>`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const url = `https://discord.com/channels/${guildId}/${channelId}`;
+  await interaction.reply({
+    content: `${e("info")}How to use → <#${channelId}>`,
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel("Open channel")
+          .setStyle(ButtonStyle.Link)
+          .setURL(url)
+      ),
+    ],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+module.exports = { data, execute, buildSetupContainer, handleHowtoButton };

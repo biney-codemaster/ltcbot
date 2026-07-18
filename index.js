@@ -204,6 +204,10 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.deferUpdate();
     }
 
+    if (interaction.isButton() && interaction.customId.startsWith("escrow_howto:")) {
+      await setupCommand.handleHowtoButton(interaction);
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith("deal_role:")) {
       const [, role, dealCode] = interaction.customId.split(":");
       await handleRoleButton(interaction, role, dealCode);

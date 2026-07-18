@@ -36,6 +36,11 @@ function validateEnv() {
   if (!process.env.REVIEWS_CHANNEL_ID) {
     warnings.push("REVIEWS_CHANNEL_ID vide → les avis ne seront pas publiés");
   }
+  if (!String(process.env.HOWTO_CHANNEL_ID || "").trim()) {
+    warnings.push(
+      "HOWTO_CHANNEL_ID empty → /setup How to use button needs it (or howto_channel option)"
+    );
+  }
 
   return { ok: errors.length === 0, errors, warnings };
 }

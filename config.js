@@ -81,6 +81,16 @@ function readChannelId(...envKeys) {
   return null;
 }
 
+/** Salon du panel /howto — lu à chaque appel (évite un .env chargé trop tôt / oubli de restart). */
+function getHowtoChannelId() {
+  return readChannelId(
+    "HOWTO_CHANNEL_ID",
+    "HOW_TO_USE_CHANNEL_ID",
+    "HOWTO_USE_CHANNEL_ID",
+    "HOW_TO_CHANNEL_ID"
+  );
+}
+
 module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.CLIENT_ID,
@@ -112,12 +122,11 @@ module.exports = {
     "REVIEW_CHANNEL_ID",
     "AVIS_CHANNEL_ID"
   ),
-  /** Salon du panel /howto — bouton lien sur le panel /setup */
-  howtoChannelId: readChannelId(
-    "HOWTO_CHANNEL_ID",
-    "HOW_TO_USE_CHANNEL_ID",
-    "HOWTO_USE_CHANNEL_ID"
-  ),
+  get howtoChannelId() {
+    return getHowtoChannelId();
+  },
+  getHowtoChannelId,
+  readChannelId,
 
   emojis, // objets, pour .setEmoji()
   emojiText, // strings, pour le texte des messages
