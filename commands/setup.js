@@ -34,6 +34,7 @@ function buildSetupContainer() {
     new TextDisplayBuilder().setContent(
       `${e("shield")}Intermédiaire de confiance entre **acheteur** et **vendeur**.\n` +
         `Les fonds sont sécurisés sur une **adresse Litecoin dédiée** jusqu'à confirmation de réception.\n\n` +
+        `${e("money")}**0 frais** de service — seuls les **frais réseau** Litecoin s'appliquent.\n\n` +
         `## ${e("info")}Déroulement\n` +
         `1. Création du deal et salon privé\n` +
         `2. Choix des rôles (acheteur / vendeur)\n` +
