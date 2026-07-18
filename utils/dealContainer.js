@@ -258,8 +258,8 @@ function buildFundsHeldContainer(deal) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("shield")}Fonds sécurisés\n` +
-        `${e("success")}Paiement reçu — LTC en **escrow**.\n\n` +
+      `## ${e("success")}Paiement confirmé\n` +
+        `${e("shield")}Fonds reçus et sécurisés en **escrow**.\n\n` +
         `${e("seller")}<@${deal.seller_id}> — livre le produit.\n` +
         `${e("buyer")}<@${deal.buyer_id}> — confirme uniquement après réception.\n\n` +
         `${walletLine}${payoutErrorLine}\n\n` +
