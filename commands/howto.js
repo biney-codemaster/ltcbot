@@ -74,6 +74,8 @@ function buildHowtoContainer() {
       `## ${e("info")}Commands\n` +
         `\`/setup\` — post the deal start panel *(staff)*\n` +
         `\`/howto\` — post this guide *(staff)*\n` +
+        `\`/restart\` — wipe & restart a deal *(staff, deal channel)*\n` +
+        `\`/cancel\` — cancel a deal immediately *(staff, deal channel)*\n` +
         `\`/anonymous\` — hide or show your profile in reviews & public logs\n` +
         `\`/stats\` — view your detailed deal statistics\n` +
         `\`/stats user:@someone\` — view another user's stats`
@@ -89,6 +91,7 @@ function buildHowtoContainer() {
       `## ${e("lock")}Tips\n` +
         `• Use \`/anonymous\` before the review if you want to stay private\n` +
         `• Only the **seller** can set the withdrawal address\n` +
+        `• Both sides can **Cancel** before the payment address is generated (dual confirm)\n` +
         `• Need help in a deal? Click the **Staff** button to ping the team\n` +
         `• Keep your transcript HTML as proof after the deal closes`
     )

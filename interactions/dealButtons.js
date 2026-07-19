@@ -16,6 +16,7 @@ const {
   buildRoleSelectionContainer,
   buildConfirmationContainer,
   buildFinalRecapContainer,
+  buildCancelConfirmContainer,
   buildPaymentContainer,
   buildPaymentSetupErrorContainer,
   buildFundsHeldContainer,
@@ -24,6 +25,7 @@ const {
   buildCloseTicketContainer,
   buildRefundPendingContainer,
   buildPublicReviewContainer,
+  canUserCancel,
 } = require("../utils/dealContainer");
 const {
   createLtcPayment,
@@ -285,35 +287,149 @@ async function handleWrongRolesButton(interaction, dealCode) {
   });
 }
 
+async function finalizeUserCancel(interaction, deal, byUserId) {
+  const dealCode = deal.deal_code;
+  db.prepare(
+    `UPDATE deals
+     SET status = 'cancelled',
+         cancel_initiator_confirmed = 0,
+         cancel_partner_confirmed = 0,
+         updated_at = datetime('now')
+     WHERE deal_code = ?`
+  ).run(dealCode);
+  const updatedDeal = getDealByCode(dealCode);
+
+  await interaction.channel.send({
+    components: [buildCloseTicketContainer(updatedDeal, byUserId)],
+    flags: MessageFlags.IsComponentsV2,
+  });
+
+  await logAdmin(interaction.client, `Deal cancelled #${dealCodeTag(dealCode)}`, [
+    `${e("cancel")}Cancelled by <@${byUserId}>`,
+    `${e("product")}**Product** — ${updatedDeal.product}`,
+    `${e("money")}**Price** — ${updatedDeal.price}${updatedDeal.currency}`,
+    ...formatBuyerSellerLines(updatedDeal),
+  ]);
+
+  return updatedDeal;
+}
+
 async function handleCancelButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal not found.");
   if (!isParticipant(deal, interaction.user.id)) {
     return deny(interaction, "This deal doesn't involve you.");
   }
-  // Annulation libre uniquement avant qu'une invoice existe
-  if (deal.status !== "pending_confirmation" || deal.payment_id) {
+  if (!canUserCancel(deal)) {
     return deny(
       interaction,
       "Cancellation isn't possible after payment generation. Click **Staff** if you need help."
     );
   }
 
-  db.prepare(`UPDATE deals SET status = 'cancelled' WHERE deal_code = ?`).run(dealCode);
-  const updatedDeal = getDealByCode(dealCode);
+  const isInitiator = interaction.user.id === deal.initiator_id;
+  const field = isInitiator ? "cancel_initiator_confirmed" : "cancel_partner_confirmed";
 
-  await interaction.update({ components: [buildRoleSelectionContainer(updatedDeal)] });
-  await interaction.channel.send({
-    components: [buildCloseTicketContainer(updatedDeal, interaction.user.id)],
-    flags: MessageFlags.IsComponentsV2,
+  // Démarre / met à jour la double confirmation d'annulation
+  db.prepare(
+    `UPDATE deals
+     SET ${field} = 1,
+         updated_at = datetime('now')
+     WHERE deal_code = ?`
+  ).run(dealCode);
+
+  let updated = getDealByCode(dealCode);
+
+  if (updated.cancel_initiator_confirmed && updated.cancel_partner_confirmed) {
+    await interaction.update({
+      components: [buildCancelConfirmContainer(updated)],
+    }).catch(async () => {
+      await interaction.deferUpdate().catch(() => {});
+    });
+    return finalizeUserCancel(interaction, updated, interaction.user.id);
+  }
+
+  await interaction.update({
+    components: [buildCancelConfirmContainer(updated)],
+  }).catch(async () => {
+    await interaction.reply({
+      components: [buildCancelConfirmContainer(updated)],
+      flags: MessageFlags.IsComponentsV2,
+    });
   });
+}
 
-  await logAdmin(interaction.client, `Deal cancelled #${dealCodeTag(dealCode)}`, [
-    `${e("cancel")}Cancelled by <@${interaction.user.id}>`,
-    `${e("product")}**Produit** — ${updatedDeal.product}`,
-    `${e("money")}**Prix** — ${updatedDeal.price}${updatedDeal.currency}`,
-    ...formatBuyerSellerLines(updatedDeal),
-  ]);
+async function handleCancelConfirmButton(interaction, dealCode) {
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal not found.");
+  if (!isParticipant(deal, interaction.user.id)) {
+    return deny(interaction, "This deal doesn't involve you.");
+  }
+  if (!canUserCancel(deal) && deal.status !== "cancelled") {
+    return deny(interaction, "Cancellation is no longer possible.");
+  }
+  if (deal.status === "cancelled") {
+    return deny(interaction, "This deal is already cancelled.");
+  }
+
+  const isInitiator = interaction.user.id === deal.initiator_id;
+  const field = isInitiator ? "cancel_initiator_confirmed" : "cancel_partner_confirmed";
+
+  if (deal[field]) {
+    return deny(interaction, "You already confirmed the cancellation.");
+  }
+
+  db.prepare(
+    `UPDATE deals SET ${field} = 1, updated_at = datetime('now') WHERE deal_code = ?`
+  ).run(dealCode);
+
+  const updated = getDealByCode(dealCode);
+
+  if (updated.cancel_initiator_confirmed && updated.cancel_partner_confirmed) {
+    await interaction.update({
+      components: [buildCancelConfirmContainer(updated)],
+    });
+    return finalizeUserCancel(interaction, updated, interaction.user.id);
+  }
+
+  await interaction.update({
+    components: [buildCancelConfirmContainer(updated)],
+  });
+}
+
+async function handleCancelAbortButton(interaction, dealCode) {
+  const deal = getDealByCode(dealCode);
+  if (!deal) return deny(interaction, "Deal not found.");
+  if (!isParticipant(deal, interaction.user.id)) {
+    return deny(interaction, "This deal doesn't involve you.");
+  }
+  if (deal.status === "cancelled") {
+    return deny(interaction, "This deal is already cancelled.");
+  }
+
+  db.prepare(
+    `UPDATE deals
+     SET cancel_initiator_confirmed = 0,
+         cancel_partner_confirmed = 0,
+         updated_at = datetime('now')
+     WHERE deal_code = ?`
+  ).run(dealCode);
+
+  const updated = getDealByCode(dealCode);
+
+  // Retour au container adapté selon l'état
+  let next;
+  if (updated.buyer_id && updated.seller_id && (updated.initiator_confirmed || updated.partner_confirmed || updated.confirm_message_id)) {
+    if (updated.initiator_confirmed && updated.partner_confirmed) {
+      next = buildFinalRecapContainer(updated);
+    } else {
+      next = buildConfirmationContainer(updated);
+    }
+  } else {
+    next = buildRoleSelectionContainer(updated);
+  }
+
+  await interaction.update({ components: [next] });
 }
 
 async function handleCheckPaymentButton(interaction, dealCode) {
@@ -1029,6 +1145,8 @@ module.exports = {
   handleConfirmButton,
   handleWrongRolesButton,
   handleCancelButton,
+  handleCancelConfirmButton,
+  handleCancelAbortButton,
   handleCheckPaymentButton,
   handleRegenPaymentButton,
   handleReleaseButton,

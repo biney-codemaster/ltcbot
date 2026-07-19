@@ -18,6 +18,8 @@ const setupCommand = require("./commands/setup");
 const anonymousCommand = require("./commands/anonymous");
 const statsCommand = require("./commands/stats");
 const howtoCommand = require("./commands/howto");
+const restartCommand = require("./commands/restart");
+const cancelCommand = require("./commands/cancel");
 const { handleDealModal } = require("./interactions/dealModal");
 const { ensurePrefsTable } = require("./utils/userPrefs");
 const {
@@ -25,6 +27,8 @@ const {
   handleConfirmButton,
   handleWrongRolesButton,
   handleCancelButton,
+  handleCancelConfirmButton,
+  handleCancelAbortButton,
   handleCheckPaymentButton,
   handleRegenPaymentButton,
   handleReleaseButton,
@@ -67,6 +71,8 @@ const commands = [
   anonymousCommand.data.toJSON(),
   statsCommand.data.toJSON(),
   howtoCommand.data.toJSON(),
+  restartCommand.data.toJSON(),
+  cancelCommand.data.toJSON(),
 ];
 
 async function registerCommands() {
@@ -224,6 +230,14 @@ client.on("interactionCreate", async (interaction) => {
       await howtoCommand.execute(interaction);
     }
 
+    if (interaction.isChatInputCommand() && interaction.commandName === "restart") {
+      await restartCommand.execute(interaction);
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === "cancel") {
+      await cancelCommand.execute(interaction);
+    }
+
     if (interaction.isButton() && interaction.customId === "escrow_start_deal") {
       await interaction.showModal(buildDealModal());
     }
@@ -251,6 +265,16 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isButton() && interaction.customId.startsWith("deal_cancel:")) {
       const [, dealCode] = interaction.customId.split(":");
       await handleCancelButton(interaction, dealCode);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("deal_cancel_confirm:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleCancelConfirmButton(interaction, dealCode);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("deal_cancel_abort:")) {
+      const [, dealCode] = interaction.customId.split(":");
+      await handleCancelAbortButton(interaction, dealCode);
     }
 
     if (interaction.isButton() && interaction.customId.startsWith("deal_check_payment:")) {

@@ -44,6 +44,25 @@ function formatTxBlock(txid) {
   return `${e("info")}**TXID** — \`${id}\``;
 }
 
+/** Annulation utilisateur possible tant qu'aucune adresse de paiement n'existe. */
+function canUserCancel(deal) {
+  if (!deal) return false;
+  if (deal.payment_id) return false;
+  if (["cancelled", "completed", "funds_held", "released", "awaiting_review", "awaiting_payment", "disputed", "refunded", "refunding"].includes(deal.status)) {
+    return false;
+  }
+  return true;
+}
+
+function makeCancelButton(deal, { withEmoji = false } = {}) {
+  let button = new ButtonBuilder()
+    .setCustomId(`deal_cancel:${deal.deal_code}`)
+    .setLabel("Cancel")
+    .setStyle(ButtonStyle.Danger);
+  if (withEmoji) button = applyEmoji(button, "cancel");
+  return button;
+}
+
 /** Note + bouton Staff en bas de chaque container de deal ticket. */
 function withStaffFooter(container, deal, { buttonEmojis = false } = {}) {
   const dealCode = deal?.deal_code;
@@ -154,7 +173,7 @@ function buildConfirmationContainer(deal) {
   );
 
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(confirmButton, wrongRolesButton)
+    new ActionRowBuilder().addComponents(confirmButton, wrongRolesButton, makeCancelButton(deal, { withEmoji: true }))
   );
 
   return withStaffFooter(container, deal, { buttonEmojis: true });
@@ -170,6 +189,47 @@ function buildFinalRecapContainer(deal) {
         `${e("seller")}**${ROLE_RECEIVER}** — <@${deal.seller_id}>\n\n` +
         `${e("next")}Generating payment address…`
     )
+  );
+
+  if (canUserCancel(deal)) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(makeCancelButton(deal))
+    );
+  }
+
+  return withStaffFooter(container, deal);
+}
+
+function buildCancelConfirmContainer(deal) {
+  const container = new ContainerBuilder();
+  const initOk = Boolean(deal.cancel_initiator_confirmed);
+  const partnerOk = Boolean(deal.cancel_partner_confirmed);
+  const count = (initOk ? 1 : 0) + (partnerOk ? 1 : 0);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${e("cancel")}Cancel this deal?\n` +
+        `Both participants must confirm to cancel.\n\n` +
+        `${e("users")}<@${deal.initiator_id}> — ${initOk ? "**confirmed**" : "*pending*"}\n` +
+        `${e("users")}<@${deal.partner_id}> — ${partnerOk ? "**confirmed**" : "*pending*"}\n\n` +
+        `${e("clock")}**${count}/2** confirmations`
+    )
+  );
+
+  const confirmCancel = new ButtonBuilder()
+    .setCustomId(`deal_cancel_confirm:${deal.deal_code}`)
+    .setLabel(`Confirm cancel (${count}/2)`)
+    .setStyle(count === 2 ? ButtonStyle.Success : ButtonStyle.Danger)
+    .setDisabled(count === 2);
+
+  const keepDeal = new ButtonBuilder()
+    .setCustomId(`deal_cancel_abort:${deal.deal_code}`)
+    .setLabel("Keep deal")
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(count === 2);
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(confirmCancel, keepDeal)
   );
 
   return withStaffFooter(container, deal);
@@ -223,7 +283,9 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
       .setLabel("Regenerate address")
       .setStyle(ButtonStyle.Primary);
 
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(retryButton));
+  const row = [retryButton];
+  if (canUserCancel(deal)) row.push(makeCancelButton(deal));
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(...row));
   return withStaffFooter(container, deal);
 }
 
@@ -540,9 +602,11 @@ function buildCloseTicketContainer(deal, byUserId, { reason = "cancelled" } = {}
 module.exports = {
   ROLE_PAYER,
   ROLE_RECEIVER,
+  canUserCancel,
   buildRoleSelectionContainer,
   buildConfirmationContainer,
   buildFinalRecapContainer,
+  buildCancelConfirmContainer,
   buildPaymentContainer,
   buildPaymentSetupErrorContainer,
   buildPaymentDetectedContainer,

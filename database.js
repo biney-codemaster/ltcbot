@@ -172,6 +172,16 @@ try {
 } catch {
   // colonne déjà présente
 }
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN cancel_initiator_confirmed INTEGER NOT NULL DEFAULT 0`);
+} catch {
+  // colonne déjà présente
+}
+try {
+  db.exec(`ALTER TABLE deals ADD COLUMN cancel_partner_confirmed INTEGER NOT NULL DEFAULT 0`);
+} catch {
+  // colonne déjà présente
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS wallet_meta (
