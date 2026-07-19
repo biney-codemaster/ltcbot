@@ -27,8 +27,6 @@ const {
   handleConfirmButton,
   handleWrongRolesButton,
   handleCancelButton,
-  handleCancelConfirmButton,
-  handleCancelAbortButton,
   handleCheckPaymentButton,
   handleRegenPaymentButton,
   handleReleaseButton,
@@ -265,16 +263,6 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isButton() && interaction.customId.startsWith("deal_cancel:")) {
       const [, dealCode] = interaction.customId.split(":");
       await handleCancelButton(interaction, dealCode);
-    }
-
-    if (interaction.isButton() && interaction.customId.startsWith("deal_cancel_confirm:")) {
-      const [, dealCode] = interaction.customId.split(":");
-      await handleCancelConfirmButton(interaction, dealCode);
-    }
-
-    if (interaction.isButton() && interaction.customId.startsWith("deal_cancel_abort:")) {
-      const [, dealCode] = interaction.customId.split(":");
-      await handleCancelAbortButton(interaction, dealCode);
     }
 
     if (interaction.isButton() && interaction.customId.startsWith("deal_check_payment:")) {

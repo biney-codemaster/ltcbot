@@ -127,6 +127,12 @@ async function handleDealModal(interaction) {
   const createdDeal = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(dealCode);
   const container = buildRoleSelectionContainer(createdDeal);
 
+  // Ping participants (message séparé — Components V2 n'accepte pas content + container)
+  await channel.send({
+    content: `${e("users")}<@${interaction.user.id}> <@${partnerId}> — deal #${dealCodeTag(dealCode)} started. Choose your roles below.`,
+    allowedMentions: { users: [interaction.user.id, partnerId] },
+  });
+
   const roleMessage = await channel.send({
     components: [container],
     flags: MessageFlags.IsComponentsV2,

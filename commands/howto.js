@@ -91,8 +91,7 @@ function buildHowtoContainer() {
       `## ${e("lock")}Tips\n` +
         `• Use \`/anonymous\` before the review if you want to stay private\n` +
         `• Only the **seller** can set the withdrawal address\n` +
-        `• Both sides can **Cancel** before the payment address is generated (dual confirm)\n` +
-        `• Need help in a deal? Click the **Staff** button to ping the team\n` +
+        `• Need help in a deal? Click the **Staff** button (max **2** pings per user)\n` +
         `• Keep your transcript HTML as proof after the deal closes`
     )
   );

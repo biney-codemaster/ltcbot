@@ -69,7 +69,9 @@ async function execute(interaction) {
   const updated = db.prepare("SELECT * FROM deals WHERE deal_code = ?").get(deal.deal_code);
 
   await interaction.reply({
-    components: [buildCloseTicketContainer(updated, interaction.user.id)],
+    components: [
+      buildCloseTicketContainer(updated, interaction.user.id, { staffFooter: false }),
+    ],
     flags: MessageFlags.IsComponentsV2,
   });
 

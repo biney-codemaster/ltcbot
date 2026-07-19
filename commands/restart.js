@@ -128,9 +128,16 @@ async function execute(interaction) {
 
   await purgeChannelMessages(interaction.channel);
 
+  db.prepare(`DELETE FROM deal_staff_pings WHERE deal_code = ?`).run(deal.deal_code);
+
   const restarted = db
     .prepare("SELECT * FROM deals WHERE deal_code = ?")
     .get(deal.deal_code);
+
+  await interaction.channel.send({
+    content: `${e("users")}<@${restarted.initiator_id}> <@${restarted.partner_id}> — deal #${dealCodeTag(deal.deal_code)} restarted. Choose your roles below.`,
+    allowedMentions: { users: [restarted.initiator_id, restarted.partner_id] },
+  });
 
   const roleMessage = await interaction.channel.send({
     components: [buildRoleSelectionContainer(restarted)],

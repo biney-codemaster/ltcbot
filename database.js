@@ -184,6 +184,15 @@ try {
 }
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS deal_staff_pings (
+    deal_code TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    ping_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (deal_code, user_id)
+  )
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS wallet_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
