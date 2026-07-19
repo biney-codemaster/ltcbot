@@ -51,15 +51,6 @@ function canUserCancel(deal) {
   return deal.status === "pending_confirmation";
 }
 
-function makeCancelButton(deal, { withEmoji = false } = {}) {
-  let button = new ButtonBuilder()
-    .setCustomId(`deal_cancel:${deal.deal_code}`)
-    .setLabel("Cancel")
-    .setStyle(ButtonStyle.Danger);
-  if (withEmoji) button = applyEmoji(button, "cancel");
-  return button;
-}
-
 /** Note + bouton Staff en bas de chaque container de deal ticket. */
 function withStaffFooter(container, deal, { buttonEmojis = false, enabled = true } = {}) {
   if (!enabled) return container;
