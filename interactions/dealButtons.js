@@ -756,10 +756,14 @@ async function handleStaffRefundButton(interaction, dealCode) {
         `You can enter the LTC address manually:`,
       components: [
         new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`deal_staff_refund_manual:${dealCode}`)
-            .setLabel("Enter LTC address")
-            .setStyle(ButtonStyle.Primary)
+          (() => {
+            const btn = new ButtonBuilder()
+              .setCustomId(`deal_staff_refund_manual:${dealCode}`)
+              .setLabel("Enter LTC address")
+              .setStyle(ButtonStyle.Primary);
+            if (config.emojis.wallet) btn.setEmoji(config.emojis.wallet);
+            return btn;
+          })()
         ),
       ],
     });

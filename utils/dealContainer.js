@@ -64,13 +64,16 @@ function withStaffFooter(container, deal, { buttonEmojis = false, enabled = true
     )
   );
   if (dealCode) {
-    let staffButton = new ButtonBuilder()
-      .setCustomId(`deal_staff_ping:${dealCode}`)
-      .setLabel("Staff")
-      .setStyle(ButtonStyle.Secondary);
-    if (buttonEmojis) staffButton = applyEmoji(staffButton, "staff");
     container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(staffButton)
+      new ActionRowBuilder().addComponents(
+        applyEmoji(
+          new ButtonBuilder()
+            .setCustomId(`deal_staff_ping:${dealCode}`)
+            .setLabel("Staff")
+            .setStyle(ButtonStyle.Secondary),
+          "staff"
+        )
+      )
     );
   }
   return container;
@@ -126,7 +129,7 @@ function buildRoleSelectionContainer(deal) {
     new ActionRowBuilder().addComponents(customerButton, sellerButton, cancelButton)
   );
 
-  return withStaffFooter(container, deal, { buttonEmojis: true });
+  return withStaffFooter(container, deal);
 }
 
 function buildConfirmationContainer(deal) {
@@ -165,7 +168,7 @@ function buildConfirmationContainer(deal) {
     new ActionRowBuilder().addComponents(confirmButton, wrongRolesButton)
   );
 
-  return withStaffFooter(container, deal, { buttonEmojis: true });
+  return withStaffFooter(container, deal);
 }
 
 function buildFinalRecapContainer(deal) {
@@ -226,10 +229,13 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
     )
   );
 
-  const retryButton = new ButtonBuilder()
+  const retryButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_regen_payment:${deal.deal_code}`)
       .setLabel("Regenerate address")
-      .setStyle(ButtonStyle.Primary);
+      .setStyle(ButtonStyle.Primary),
+    "payment"
+  );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(retryButton));
   return withStaffFooter(container, deal);
@@ -287,10 +293,13 @@ function buildPaymentFailedContainer(deal, reason) {
     )
   );
 
-  const retryButton = new ButtonBuilder()
+  const retryButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_regen_payment:${deal.deal_code}`)
       .setLabel("New address")
-      .setStyle(ButtonStyle.Primary);
+      .setStyle(ButtonStyle.Primary),
+    "payment"
+  );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(retryButton));
 
@@ -319,16 +328,22 @@ function buildFundsHeldContainer(deal) {
     )
   );
 
-  const walletButton = new ButtonBuilder()
+  const walletButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_seller_wallet:${deal.deal_code}`)
       .setLabel(deal.seller_wallet ? "Update address (seller)" : "Seller address")
-      .setStyle(ButtonStyle.Secondary);
+      .setStyle(ButtonStyle.Secondary),
+    "wallet"
+  );
 
-  const releaseButton = new ButtonBuilder()
+  const releaseButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_release:${deal.deal_code}`)
       .setLabel(deal.payout_error ? "Retry release" : "Product received — release")
       .setStyle(ButtonStyle.Success)
-      .setDisabled(!deal.seller_wallet);
+      .setDisabled(!deal.seller_wallet),
+    "release"
+  );
 
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(walletButton, releaseButton)
@@ -403,10 +418,13 @@ function buildReviewRequestContainer(deal) {
     )
   );
 
-  const reviewButton = new ButtonBuilder()
+  const reviewButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_review:${deal.deal_code}`)
       .setLabel("Leave a review")
-      .setStyle(ButtonStyle.Primary);
+      .setStyle(ButtonStyle.Primary),
+    "confirm"
+  );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(reviewButton));
   return withStaffFooter(container, deal);
@@ -471,21 +489,30 @@ function buildDisputeContainer(deal, openedBy) {
     )
   );
 
-  const releaseButton = new ButtonBuilder()
+  const releaseButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_staff_release:${deal.deal_code}`)
       .setLabel("Release to seller")
       .setStyle(ButtonStyle.Success)
-      .setDisabled(!deal.seller_wallet);
+      .setDisabled(!deal.seller_wallet),
+    "release"
+  );
 
-  const refundButton = new ButtonBuilder()
+  const refundButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_staff_refund:${deal.deal_code}`)
       .setLabel("Refund customer")
-      .setStyle(ButtonStyle.Primary);
+      .setStyle(ButtonStyle.Primary),
+    "money"
+  );
 
-  const resolveButton = new ButtonBuilder()
+  const resolveButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_staff_resolve:${deal.deal_code}`)
       .setLabel("Close without payout")
-      .setStyle(ButtonStyle.Secondary);
+      .setStyle(ButtonStyle.Secondary),
+    "close"
+  );
 
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(releaseButton, refundButton, resolveButton)
@@ -536,10 +563,13 @@ function buildCloseTicketContainer(deal, byUserId, { reason = "cancelled", staff
 
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
 
-  const closeButton = new ButtonBuilder()
+  const closeButton = applyEmoji(
+    new ButtonBuilder()
       .setCustomId(`deal_close:${deal.deal_code}`)
       .setLabel("Close channel")
-      .setStyle(ButtonStyle.Danger);
+      .setStyle(ButtonStyle.Danger),
+    "close"
+  );
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(closeButton));
   return withStaffFooter(container, deal, { enabled: staffFooter });
