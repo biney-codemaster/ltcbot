@@ -76,6 +76,7 @@ function buildHowtoContainer() {
         `\`/howto\` — post this guide *(staff)*\n` +
         `\`/restart\` — wipe & restart a deal *(staff, deal channel)*\n` +
         `\`/cancel\` — cancel a deal immediately *(staff, deal channel)*\n` +
+        `\`+emoji\` — list server emojis for config.js *(staff)*\n` +
         `\`/anonymous\` — hide or show your profile in reviews & public logs\n` +
         `\`/stats\` — view your detailed deal statistics\n` +
         `\`/stats user:@someone\` — view another user's stats`

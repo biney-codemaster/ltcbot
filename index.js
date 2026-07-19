@@ -20,6 +20,7 @@ const statsCommand = require("./commands/stats");
 const howtoCommand = require("./commands/howto");
 const restartCommand = require("./commands/restart");
 const cancelCommand = require("./commands/cancel");
+const { handleEmojiListMessage } = require("./commands/emojiList");
 const { handleDealModal } = require("./interactions/dealModal");
 const { ensurePrefsTable } = require("./utils/userPrefs");
 const {
@@ -356,6 +357,16 @@ client.on("interactionCreate", async (interaction) => {
     } else {
       await interaction.reply(payload).catch(() => {});
     }
+  }
+});
+
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+  try {
+    await handleEmojiListMessage(message);
+  } catch (err) {
+    console.error("Erreur +emoji:", err);
+    await message.reply(`${config.e("error")}Could not list emojis.`).catch(() => {});
   }
 });
 
