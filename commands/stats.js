@@ -108,7 +108,7 @@ function roleBlock(title, emojiKey, stats) {
     `${e("payment")}**Awaiting payment** — ${stats.awaitingPayment}\n` +
     `${e("shield")}**Funds held** — ${stats.fundsHeld}\n` +
     `${e("release")}**Released** — ${stats.released}\n` +
-    `${e("dispute")}**Disputed** — ${stats.disputed}\n` +
+    `${e("warning")}**Disputed** — ${stats.disputed}\n` +
     `${e("money")}**Refunded** — ${stats.refunded}\n` +
     `${e("cancel")}**Cancelled** — ${stats.cancelled}\n` +
     `${e("ltc")}**Completed volume** — \`${vol} LTC\`` +

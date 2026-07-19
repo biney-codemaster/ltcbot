@@ -52,7 +52,7 @@ function canUserCancel(deal) {
 }
 
 /** Note + bouton Staff en bas de chaque container de deal ticket. */
-function withStaffFooter(container, deal, { buttonEmojis = false, enabled = true } = {}) {
+function withStaffFooter(container, deal, { enabled = true } = {}) {
   if (!enabled) return container;
   const dealCode = deal?.deal_code;
   container.addSeparatorComponents(
@@ -479,7 +479,7 @@ function buildDisputeContainer(deal, openedBy) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("dispute")}Dispute opened\n` +
+      `## ${e("warning")}Dispute opened\n` +
         `Opened by <@${openedBy}>.\n\n` +
         `**Reason**\n${deal.dispute_reason || "*not specified*"}\n\n` +
         `${e("staff")}Staff actions:\n` +

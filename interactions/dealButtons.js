@@ -612,7 +612,7 @@ async function handleDisputeModal(interaction) {
   });
 
   await logAdmin(interaction.client, `Dispute opened #${dealCodeTag(dealCode)}`, [
-    `${e("dispute")}Opened by <@${interaction.user.id}>`,
+    `${e("warning")}Opened by <@${interaction.user.id}>`,
     `**Reason** — ${reason.slice(0, 300)}`,
     ...formatBuyerSellerLines(updatedDeal),
     formatTxidLine(updatedDeal.payout_id),

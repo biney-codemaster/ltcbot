@@ -13,38 +13,37 @@ function parseEmoji(raw) {
 // Aucun emoji Unicode : uniquement des emojis custom Discord.
 const rawEmojis = {
   // Général / navigation
-  info: null, // infos, messages système
-  success: null, // validation, succès
-  warning: null, // attention, rôles incorrects
-  error: null, // erreur, échec
-  cancel: null, // annulation
-  confirm: null, // confirmation
-  close: null, // fermeture de salon
-  next: null, // prochaine étape
-  lock: null, // salon privé / sécurité
-  staff: null, // médiation / staff
-  clock: null, // en attente
+  info: "<:info:1528496243779698839>",
+  success: "<:success:1528497568374325382>",
+  warning: "<:warning:1528498348544491572>",
+  error: "<:error:1528497725325447268>",
+  cancel: "<:cancel:1528498548289835112>",
+  confirm: "<:confirm:1528497150957195404>",
+  close: "<:close:1528497782502199306>",
+  next: "<:next:1528498418450960394>",
+  lock: "<:lock:1528496930966081717>",
+  staff: "<:staff:1528497065879929013>",
+  clock: "<:clock:1528496988956397618>",
 
   // Escrow / deal
-  escrow: null, // panneau principal + bouton déco (mets "<:nom:id>" pour l'afficher)
-  deal: null, // deal / transaction
-  shield: null, // confiance / protection des fonds
-  roles: null, // sélection des rôles
-  buyer: null, // rôle acheteur
-  seller: null, // rôle vendeur
-  product: null, // produit échangé
-  users: null, // participants
+  escrow: "<:escrow:1527805147651248321>",
+  deal: "<:deal:1528497243332677815>",
+  shield: "<:shield:1528497831189680220>",
+  roles: "<:roles:1528497672015708220>",
+  buyer: "<:customer:1528496834308341860>", // customer
+  seller: "<:seller:1528496886686810353>",
+  product: "<:package:1528498614605840434>", // package
+  users: "<:users:1528496055505784924>",
 
   // Paiement
-  money: null, // montant fiat
-  crypto: null, // crypto générique
-  usd: "<:emoji_21:1527831343273345024>", // dollar $
-  eur: "<:emoji_22:1527831361107529848>", // euro €
-  ltc: "<:emojigg_ltc:1527807573493809203>", // Litecoin
-  wallet: null, // adresse / portefeuille
-  payment: null, // paiement en cours
-  release: null, // libération des fonds
-  dispute: null, // litige
+  money: "<:money:1528496636240728284>",
+  crypto: "<:crypto:1528498733258510516>",
+  usd: "<:dollar:1528498650706084012>",
+  eur: "<:euro:1528498501758091334>",
+  ltc: "<:ltc:1528495999956287558>",
+  wallet: "<:wallet:1528497115444019301>",
+  payment: "<:payment:1528496762866761810>",
+  release: "<:release:1528496366253510827>",
 };
 
 const emojis = {};
