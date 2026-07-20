@@ -3,7 +3,7 @@ const config = require("../config");
 const { createDealChannel } = require("../utils/dealChannel");
 const { generateUniqueDealCode } = require("../utils/dealCode");
 const { buildRoleSelectionContainer } = require("../utils/dealContainer");
-const { fiatToLtc } = require("../utils/ltcPrice");
+const { fiatToCrypto, isSupportedCrypto, SUPPORTED_CRYPTOS } = require("../utils/cryptoWallet");
 const { MessageFlags } = require("discord.js");
 const { logAdmin, dealCodeTag } = require("../utils/dealLogger");
 const { e } = config;
@@ -72,9 +72,9 @@ async function handleDealModal(interaction) {
   }
 
   // --- Validation crypto (menu) ---
-  if (crypto !== "LTC") {
+  if (!isSupportedCrypto(crypto)) {
     return interaction.reply({
-      content: `${e("error")}Unsupported crypto for now. Choose Litecoin (LTC).`,
+      content: `${e("error")}Unsupported crypto. Choose one of: ${SUPPORTED_CRYPTOS.join(", ")}.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -82,10 +82,10 @@ async function handleDealModal(interaction) {
   // --- Conversion fiat -> crypto pour affichage (non bloquant si API down) ---
   let payAmount = null;
   try {
-    const { cryptoAmount } = await fiatToLtc(price, currency);
+    const { cryptoAmount } = await fiatToCrypto(price, currency, crypto);
     payAmount = cryptoAmount;
   } catch (err) {
-    console.error("Conversion LTC affichage indisponible:", err.message);
+    console.error(`Conversion ${crypto} affichage indisponible:`, err.message);
   }
 
   // --- Génération du code de deal (6 caractères, unique) ---

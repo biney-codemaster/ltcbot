@@ -41,6 +41,9 @@ const rawEmojis = {
   usd: "<:dollar:1528498650706084012>",
   eur: "<:euro:1528498501758091334>",
   ltc: "<:ltc:1528495999956287558>",
+  btc: null, // Bitcoin — mets "<:nom:id>" si tu as l'emoji
+  eth: null, // Ethereum
+  sol: null, // Solana
   wallet: "<:wallet:1528497115444019301>",
   payment: "<:payment:1528496762866761810>",
   release: "<:release:1528496366253510827>",

@@ -1,0 +1,87 @@
+NESTOO - MIDDLEMAN — SERVER RULES
+
+Welcome to Nestoo. This server provides a crypto escrow service (LTC, BTC, ETH, SOL) to help buyers and sellers complete deals safely. By joining and using this server, you agree to follow these rules at all times.
+
+────────────────────────────────────────
+1. GENERAL CONDUCT
+────────────────────────────────────────
+• Treat all members and staff with respect. Harassment, hate speech, threats, discrimination, or targeted abuse will not be tolerated.
+• Do not spam, flood channels, advertise without permission, or disrupt the server.
+• Do not share illegal content, malware, phishing links, or anything that violates Discord’s Terms of Service or Community Guidelines.
+• English is the primary language for support and deal communication unless staff say otherwise.
+
+────────────────────────────────────────
+2. ESCROW & DEAL RULES
+────────────────────────────────────────
+• Use the official deal flow only. Start deals through the designated panel and follow the bot instructions.
+• Choose your role carefully. Customer pays into escrow. Seller delivers and receives the payout. Both sides must confirm roles before payment.
+• Send the exact crypto amount shown. Underpayments or overpayments may not be refunded automatically. Always double-check the address and amount.
+• Do not send funds outside the escrow address provided in your deal channel unless staff instruct you to.
+• Do not bypass escrow, rush a release, or pressure the other party before delivery is complete.
+• Cancellation is only available before a payment address is generated, through the official process in the deal channel.
+• Staff decisions are final in disputes, refunds, releases, or deal cancellations when mediation is required.
+
+────────────────────────────────────────
+3. PAYMENTS & FEES
+────────────────────────────────────────
+• Nestoo charges 0 service fees. Only network fees apply.
+• The Customer is responsible for sending the correct amount to the correct address.
+• Once funds are confirmed on-chain and held in escrow, the deal follows the agreed terms and bot workflow.
+• Nestoo is not responsible for user error (wrong address, wrong amount, wrong network, or third-party wallet issues).
+
+────────────────────────────────────────
+4. DELIVERY, RELEASE & REVIEWS
+────────────────────────────────────────
+• The Seller must deliver the agreed product or service as described in the deal.
+• The Customer should only release funds after confirming receipt.
+• After payout, the Customer may leave a review. Reviews must be honest and must not contain harassment, doxxing, or false accusations.
+• Use /anonymous before submitting a review if you want to appear anonymous in public logs and review channels.
+
+────────────────────────────────────────
+5. STAFF & SUPPORT
+────────────────────────────────────────
+• Staff mediate deals; they do not guarantee outcomes. They may assist with disputes, refunds, releases, or channel management.
+• Use the Staff button in your deal channel if you need help. Abuse of staff pings may result in restrictions.
+• Do not impersonate staff, moderators, or the Nestoo bot.
+• Staff may warn, mute, cancel deals, close channels, or remove members from the server.
+
+────────────────────────────────────────
+6. PRIVACY & SECURITY
+────────────────────────────────────────
+• Do not share private information unnecessarily.
+• Never share your wallet seed phrase, private keys, or passwords with anyone — including staff.
+• Screenshots, transcripts, and transaction IDs may be used for dispute resolution and record-keeping.
+• Do not attempt to exploit, reverse-engineer, or abuse the bot or escrow system.
+
+────────────────────────────────────────
+7. PROHIBITED ACTIVITY
+────────────────────────────────────────
+• Scamming, fraud, or misrepresenting a product or payment
+• Money laundering or illegal transactions
+• Fake or duplicate deals to manipulate reviews or statistics
+• Stealing funds, hijacking deals, or interfering with another user’s transaction
+• Encouraging trades outside escrow
+
+Violations may result in immediate removal and a permanent ban.
+
+────────────────────────────────────────
+8. LIABILITY
+────────────────────────────────────────
+• Nestoo is a technical escrow middleman, not a legal party to your agreement.
+• We do not guarantee the quality, legality, or delivery of any product or service.
+• Users participate at their own risk and must verify who they trade with.
+• The team may refuse service, cancel deals, or restrict access at any time.
+
+────────────────────────────────────────
+9. CHANGES
+────────────────────────────────────────
+These rules may be updated at any time. Continued use of the server means you accept the revised rules.
+
+────────────────────────────────────────
+10. ACKNOWLEDGEMENT
+────────────────────────────────────────
+By using Nestoo, you confirm that you have read these rules, will follow the official escrow process, accept staff decisions in disputes, and understand that blockchain transactions are irreversible.
+
+Need help? Read the How to use channel, then use the Staff button in your deal if something goes wrong.
+
+Thank you for helping keep Nestoo safe and professional.

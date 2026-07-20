@@ -49,7 +49,8 @@ const {
 require("./database"); // initialise la DB au démarrage
 const { startPaymentPoller } = require("./utils/paymentPoller");
 const { logEnvValidation } = require("./utils/envCheck");
-const { pingWallet, loadOrCreateMnemonic } = require("./utils/ltcWallet");
+const { pingWallets, loadOrCreateMnemonic } = require("./utils/cryptoWallet");
+const { CRYPTO_ASSETS, SUPPORTED_CRYPTOS } = require("./utils/cryptoAssets");
 const { probeLogChannels } = require("./utils/dealLogger");
 
 if (!logEnvValidation()) {
@@ -150,11 +151,16 @@ function buildDealModal() {
         .addOptions(eurOption, usdOption)
     );
 
-  const ltcOption = new StringSelectMenuOptionBuilder()
-    .setLabel("Litecoin (LTC)")
-    .setValue("LTC")
-    .setDescription("Pay with Litecoin");
-  if (config.emojis.ltc) ltcOption.setEmoji(config.emojis.ltc);
+  const cryptoOptions = SUPPORTED_CRYPTOS.map((code) => {
+    const asset = CRYPTO_ASSETS[code];
+    const option = new StringSelectMenuOptionBuilder()
+      .setLabel(asset.label)
+      .setValue(asset.code)
+      .setDescription(asset.description);
+    const emoji = config.emojis[asset.emojiKey] || config.emojis.crypto;
+    if (emoji) option.setEmoji(emoji);
+    return option;
+  });
 
   const cryptoLabel = new LabelBuilder()
     .setLabel("Deal crypto")
@@ -163,7 +169,7 @@ function buildDealModal() {
         .setCustomId("crypto")
         .setPlaceholder("Choose a crypto")
         .setRequired(true)
-        .addOptions(ltcOption)
+        .addOptions(...cryptoOptions)
     );
 
   modal.addLabelComponents(partnerLabel, productLabel, priceLabel, currencyLabel, cryptoLabel);
@@ -175,10 +181,16 @@ client.once(Events.ClientReady, async () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
   try {
     loadOrCreateMnemonic();
-    const probe = await pingWallet();
-    console.log(`Wallet LTC OK (probe ${probe.probe_address}).`);
+    const probes = await pingWallets();
+    for (const [code, result] of Object.entries(probes)) {
+      if (result?.ok) {
+        console.log(`Wallet ${code} OK (probe ${result.probe_address}).`);
+      } else {
+        console.warn(`Wallet ${code} KO:`, result?.error || "unknown");
+      }
+    }
   } catch (err) {
-    console.error("Wallet LTC KO au démarrage:", err.message);
+    console.error("Wallet crypto KO au démarrage:", err.message);
   }
 
   try {
@@ -210,7 +222,7 @@ client.once(Events.ClientReady, async () => {
 
   await probeLogChannels(client);
   startPaymentPoller(client);
-  console.log("LTC wallet polling started (5s).");
+  console.log("Crypto wallet polling started (5s).");
 });
 
 client.on("interactionCreate", async (interaction) => {

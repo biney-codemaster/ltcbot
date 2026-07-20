@@ -6,9 +6,9 @@ const {
   MessageFlags,
 } = require("discord.js");
 const config = require("../config");
-const { formatLtcAmount } = require("./ltcPrice");
+const { formatCryptoAmount } = require("./cryptoPrice");
 const { isUserAnonymous, formatAuthor } = require("./userPrefs");
-const { getExplorerTxUrl } = require("./ltcWallet");
+const { getExplorerTxUrl, cryptoEmoji } = require("./cryptoWallet");
 
 const { e } = config;
 
@@ -39,13 +39,15 @@ function dealCodeTag(code) {
   return `\`${code}\``;
 }
 
-function formatTxidLine(txid, { emoji = true } = {}) {
+function formatTxidLine(txid, { emoji = true, crypto = "LTC" } = {}) {
   const id = String(txid || "").trim();
   if (!id) return null;
   const prefix = emoji ? `${e("info")}` : "";
-  if (/^[a-f0-9]{64}$/i.test(id)) {
-    const url = getExplorerTxUrl(id);
-    return `${prefix}**TXID** — \`${id}\` · [Link](${url})`;
+  try {
+    const url = getExplorerTxUrl(crypto, id);
+    if (url) return `${prefix}**TXID** — \`${id}\` · [Link](${url})`;
+  } catch {
+    // fall through
   }
   return `${prefix}**TXID** — \`${id}\``;
 }
@@ -177,8 +179,8 @@ function formatFiatParen(deal) {
 }
 
 function formatCryptoAmountLine(deal) {
-  const amount = formatLtcAmount(Number(deal.pay_amount)) || "—";
   const crypto = deal.crypto || "LTC";
+  const amount = formatCryptoAmount(Number(deal.pay_amount), crypto) || "—";
   return `\`${amount} ${crypto}\` ${formatFiatParen(deal)}`;
 }
 
@@ -190,7 +192,7 @@ async function logPublicCompleted(client, deal) {
   const customerAnon =
     Boolean(deal.review_anonymous) || isUserAnonymous(deal.buyer_id);
   const sellerAnon = isUserAnonymous(deal.seller_id);
-  const txLine = formatTxidLine(deal.payout_id);
+  const txLine = formatTxidLine(deal.payout_id, { crypto });
 
   const container = new ContainerBuilder();
   container.addTextDisplayComponents(
@@ -201,7 +203,7 @@ async function logPublicCompleted(client, deal) {
   );
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## ${e("ltc")}${crypto}\n` +
+      `## ${cryptoEmoji(crypto)}${crypto}\n` +
         `${formatCryptoAmountLine(deal)}\n\n` +
         `${e("buyer")}**Customer** — ${formatAuthor(deal.buyer_id, { anonymous: customerAnon })}\n` +
         `${e("seller")}**Seller** — ${formatAuthor(deal.seller_id, { anonymous: sellerAnon })}\n` +

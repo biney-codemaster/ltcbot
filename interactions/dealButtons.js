@@ -27,15 +27,19 @@ const {
   canUserCancel,
 } = require("../utils/dealContainer");
 const {
-  createLtcPayment,
+  createPayment,
   payoutToSeller,
   refundToBuyer,
   findBuyerRefundAddress,
-  isValidLtcAddress,
+  isValidAddress,
   getPaymentStatus,
-} = require("../utils/ltcWallet");
+  formatCryptoAmount,
+  cryptoEmoji,
+  addressPlaceholder,
+  addressHint,
+  networkName,
+} = require("../utils/cryptoWallet");
 const { refreshDealPayment, updateFundsHeldMessage } = require("../utils/paymentPoller");
-const { formatLtcAmount } = require("../utils/ltcPrice");
 const {
   logAdmin,
   dealCodeTag,
@@ -109,7 +113,7 @@ function denyUnlessSellerOnly(interaction, deal) {
 }
 
 async function createAndSendPayment(channel, deal) {
-  const payment = await createLtcPayment(deal);
+  const payment = await createPayment(deal);
   const payAmount = payment.pay_amount != null ? Number(payment.pay_amount) : deal.pay_amount;
 
   db.prepare(
@@ -120,6 +124,7 @@ async function createAndSendPayment(channel, deal) {
          expected_pay_amount = @expected_pay_amount,
          received_pay_amount = NULL,
          payment_status = @payment_status,
+         wallet_index = @wallet_index,
          status = 'awaiting_payment',
          payout_error = NULL,
          updated_at = datetime('now')
@@ -130,6 +135,7 @@ async function createAndSendPayment(channel, deal) {
     pay_amount: payAmount,
     expected_pay_amount: payAmount,
     payment_status: payment.payment_status || "waiting",
+    wallet_index: payment.wallet_index != null ? Number(payment.wallet_index) : null,
     deal_code: deal.deal_code,
   });
 
@@ -231,14 +237,15 @@ async function handleConfirmButton(interaction, dealCode) {
     try {
       await createAndSendPayment(interaction.channel, updatedDeal);
       const paidDeal = getDealByCode(dealCode);
+      const coin = paidDeal.crypto || "LTC";
       await logAdmin(interaction.client, `Payment generated #${dealCodeTag(dealCode)}`, [
-        `${e("payment")}LTC address created`,
+        `${e("payment")}${coin} address created`,
         `${e("wallet")}**Address** — \`${paidDeal.pay_address || "—"}\``,
-        `${e("ltc")}**Amount** — \`${formatLtcAmount(Number(paidDeal.pay_amount)) || "—"} LTC\``,
+        `${cryptoEmoji(coin)}**Amount** — \`${formatCryptoAmount(Number(paidDeal.pay_amount), coin) || "—"} ${coin}\``,
         ...formatBuyerSellerLines(paidDeal),
       ]);
     } catch (err) {
-      console.error("LTC wallet payment creation:", err.message);
+      console.error("Crypto wallet payment creation:", err.message);
       db.prepare(
         `UPDATE deals
          SET status = 'payment_failed', updated_at = datetime('now')
@@ -347,11 +354,12 @@ async function handleCheckPaymentButton(interaction, dealCode) {
       });
     }
 
-    const amount = formatLtcAmount(Number(updated.pay_amount)) || "—";
+    const coin = updated.crypto || "LTC";
+    const amount = formatCryptoAmount(Number(updated.pay_amount), coin) || "—";
     return interaction.editReply({
       content:
         `${e("clock")}Current status: **${updated.payment_status || "waiting"}**\n` +
-        `${e("ltc")}Expected amount: \`${amount} ${updated.crypto || "LTC"}\``,
+        `${cryptoEmoji(coin)}Expected amount: \`${amount} ${coin}\``,
     });
   } catch (err) {
     console.error("Vérification paiement:", err.message);
@@ -418,7 +426,7 @@ async function handleReleaseButton(interaction, dealCode) {
   if (!deal.seller_wallet) {
     return deny(
       interaction,
-      "The seller must first set their LTC address (Seller address button)."
+      `The seller must first set their ${deal.crypto || "crypto"} address (Seller address button).`
     );
   }
 
@@ -460,7 +468,7 @@ async function handleReleaseButton(interaction, dealCode) {
 
     await logAdmin(interaction.client, `Payout broadcast #${dealCodeTag(dealCode)}`, [
       `${e("release")}Transaction broadcast to seller`,
-      formatTxidLine(result.payoutId),
+      formatTxidLine(result.payoutId, { crypto: deal.crypto || "LTC" }),
       `${e("wallet")}**To** — \`${deal.seller_wallet}\``,
       ...formatBuyerSellerLines(deal),
     ]);
@@ -498,23 +506,24 @@ async function handleSellerWalletButton(interaction, dealCode) {
   const blocked = denyUnlessSellerOnly(interaction, deal);
   if (blocked) return blocked;
 
+  const coin = deal.crypto || "LTC";
   const modal = new ModalBuilder()
     .setCustomId(`deal_seller_wallet_modal:${dealCode}`)
-    .setTitle("LTC withdrawal address");
+    .setTitle(`${coin} withdrawal address`);
 
   const walletInput = new TextInputBuilder()
     .setCustomId("seller_wallet")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMaxLength(100)
-    .setPlaceholder("ltc1... ou L...");
+    .setPlaceholder(addressPlaceholder(coin));
 
   if (deal.seller_wallet) {
     walletInput.setValue(deal.seller_wallet);
   }
 
   const walletLabel = new LabelBuilder()
-    .setLabel("Seller's Litecoin address")
+    .setLabel(`Seller's ${networkName(coin)} address`)
     .setTextInputComponent(walletInput);
 
   modal.addLabelComponents(walletLabel);
@@ -528,11 +537,12 @@ async function handleSellerWalletModal(interaction) {
   const blocked = denyUnlessSellerOnly(interaction, deal);
   if (blocked) return blocked;
 
+  const coin = deal.crypto || "LTC";
   const wallet = interaction.fields.getTextInputValue("seller_wallet").trim();
-  if (!isValidLtcAddress(wallet)) {
+  if (!isValidAddress(coin, wallet)) {
     return deny(
       interaction,
-      "Invalid LTC address. Use a Litecoin address (L… / M… / ltc1…)."
+      `Invalid ${coin} address. Use a ${addressHint(coin)}.`
     );
   }
 
@@ -615,7 +625,7 @@ async function handleDisputeModal(interaction) {
     `${e("warning")}Opened by <@${interaction.user.id}>`,
     `**Reason** — ${reason.slice(0, 300)}`,
     ...formatBuyerSellerLines(updatedDeal),
-    formatTxidLine(updatedDeal.payout_id),
+    formatTxidLine(updatedDeal.payout_id, { crypto: updatedDeal.crypto || "LTC" }),
   ]);
 }
 
@@ -630,7 +640,7 @@ async function handleStaffReleaseButton(interaction, dealCode) {
     return deny(interaction, "Staff release isn't possible at this stage.");
   }
   if (!deal.seller_wallet) {
-    return deny(interaction, "The seller must have an LTC address first.");
+    return deny(interaction, `The seller must have a ${deal.crypto || "crypto"} address first.`);
   }
 
   // Réutilise la logique release
@@ -677,7 +687,7 @@ async function handleStaffResolveButton(interaction, dealCode) {
     `${e("staff")}Closed without payout by <@${interaction.user.id}>`,
     `${e("product")}**Produit** — ${updated.product}`,
     ...formatBuyerSellerLines(updated),
-    formatTxidLine(updated.payout_id),
+    formatTxidLine(updated.payout_id, { crypto: updated.crypto || "LTC" }),
   ]);
 }
 
@@ -736,7 +746,7 @@ async function handleStaffRefundButton(interaction, dealCode) {
     await logAdmin(interaction.client, `Refund broadcast #${dealCodeTag(dealCode)}`, [
       `${e("money")}Auto refund started by <@${interaction.user.id}>`,
       `${e("wallet")}**Address (detected)** — \`${buyerWallet}\``,
-      formatTxidLine(result.payoutId),
+      formatTxidLine(result.payoutId, { crypto: deal.crypto || "LTC" }),
       ...formatBuyerSellerLines(updated),
       `${e("clock")}Awaiting blockchain confirmation`,
     ]);
@@ -753,13 +763,13 @@ async function handleStaffRefundButton(interaction, dealCode) {
     return interaction.editReply({
       content:
         `${e("warning")}Auto-detect failed: \`${err.message}\`\n` +
-        `You can enter the LTC address manually:`,
+        `You can enter the ${deal.crypto || "crypto"} address manually:`,
       components: [
         new ActionRowBuilder().addComponents(
           (() => {
             const btn = new ButtonBuilder()
               .setCustomId(`deal_staff_refund_manual:${dealCode}`)
-              .setLabel("Enter LTC address")
+              .setLabel(`Enter ${deal.crypto || "crypto"} address`)
               .setStyle(ButtonStyle.Primary);
             if (config.emojis.wallet) btn.setEmoji(config.emojis.wallet);
             return btn;
@@ -778,6 +788,7 @@ async function handleStaffRefundManualButton(interaction, dealCode) {
   const deal = getDealByCode(dealCode);
   if (!deal) return deny(interaction, "Deal not found.");
 
+  const coin = deal.crypto || "LTC";
   const modal = new ModalBuilder()
     .setCustomId(`deal_staff_refund_modal:${dealCode}`)
     .setTitle("Refund customer");
@@ -787,12 +798,12 @@ async function handleStaffRefundManualButton(interaction, dealCode) {
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMaxLength(100)
-    .setPlaceholder("ltc1... ou L...");
+    .setPlaceholder(addressPlaceholder(coin));
   if (deal.buyer_wallet) walletInput.setValue(deal.buyer_wallet);
 
   modal.addLabelComponents(
     new LabelBuilder()
-      .setLabel("Customer's LTC address")
+      .setLabel(`Customer's ${coin} address`)
       .setTextInputComponent(walletInput)
   );
   await interaction.showModal(modal);
@@ -810,9 +821,10 @@ async function handleStaffRefundModal(interaction) {
     return deny(interaction, "Refund isn't possible at this stage.");
   }
 
+  const coin = deal.crypto || "LTC";
   const buyerWallet = interaction.fields.getTextInputValue("buyer_wallet").trim();
-  if (!isValidLtcAddress(buyerWallet)) {
-    return deny(interaction, "Invalid LTC address.");
+  if (!isValidAddress(coin, buyerWallet)) {
+    return deny(interaction, `Invalid ${coin} address.`);
   }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -856,7 +868,7 @@ async function handleStaffRefundModal(interaction) {
     await logAdmin(interaction.client, `Refund broadcast #${dealCodeTag(dealCode)}`, [
       `${e("money")}Refund started by <@${interaction.user.id}>`,
       `${e("wallet")}**Address** — \`${buyerWallet}\``,
-      formatTxidLine(result.payoutId),
+      formatTxidLine(result.payoutId, { crypto: deal.crypto || "LTC" }),
       ...formatBuyerSellerLines(updated),
       `${e("clock")}Awaiting blockchain confirmation`,
     ]);
@@ -1055,7 +1067,7 @@ async function handleCloseButton(interaction, dealCode) {
     `${e("close")}Closed by <@${interaction.user.id}>`,
     `**Deal status** — ${deal.status}`,
     ...formatBuyerSellerLines(deal),
-    formatTxidLine(deal.payout_id),
+    formatTxidLine(deal.payout_id, { crypto: deal.crypto || "LTC" }),
   ]);
 
   await interaction.reply({

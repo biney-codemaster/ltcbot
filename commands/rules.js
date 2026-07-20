@@ -32,7 +32,7 @@ function getRulesSections(howtoChannelId) {
     {
       content:
         `${e("info")}Welcome to **Nestoo**.\n` +
-        `This server provides a **Litecoin (LTC) escrow** service to help buyers and sellers complete deals safely.\n\n` +
+        `This server provides a **crypto escrow** service *(LTC, BTC, ETH, SOL)* to help buyers and sellers complete deals safely.\n\n` +
         `By joining and using this server, you agree to follow these rules __at all times__.`,
     },
     {
@@ -51,7 +51,7 @@ function getRulesSections(howtoChannelId) {
         `${e("buyer")}**Customer** — pays into escrow.\n` +
         `${e("seller")}**Seller** — delivers and receives the payout.\n` +
         `Both sides must confirm roles **before payment**.\n\n` +
-        `${e("ltc")}Send the **exact LTC amount** shown. Underpayments or overpayments may **not** be refunded automatically. Always double-check the address and amount.\n\n` +
+        `${e("crypto")}Send the **exact crypto amount** shown. Underpayments or overpayments may **not** be refunded automatically. Always double-check the address and amount.\n\n` +
         `${e("warning")}Do **not** send funds outside the escrow address provided in your deal channel unless staff instruct you to.\n` +
         `Do **not** bypass escrow, rush a release, or pressure the other party before delivery is complete.\n\n` +
         `${e("cancel")}Cancellation is only available **before a payment address is generated**, through the official process in the deal channel.\n\n` +
@@ -60,7 +60,7 @@ function getRulesSections(howtoChannelId) {
     {
       content:
         `## ${e("money")}3. PAYMENTS & FEES\n` +
-        `${e("success")}**0 service fees** — only Litecoin network fees apply.\n\n` +
+        `${e("success")}**0 service fees** — only network fees apply.\n\n` +
         `${e("buyer")}The **Customer** is responsible for sending the correct amount to the correct address.\n` +
         `${e("payment")}Once funds are confirmed on-chain and held in escrow, the deal follows the agreed terms and bot workflow.\n\n` +
         `${e("warning")}Nestoo is **not** responsible for user error *(wrong address, wrong amount, wrong network, or third-party wallet issues)*.`,

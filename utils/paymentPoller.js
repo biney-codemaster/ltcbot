@@ -10,10 +10,12 @@ const {
   isPayoutFailedStatus,
   findFundingTxid,
   comparePaymentAmount,
-  createLtcPayment,
+  createPayment,
   sweepToOwnerWallet,
-  getOwnerLtcWallet,
-} = require("./ltcWallet");
+  getOwnerWallet,
+  formatCryptoAmount,
+  cryptoEmoji,
+} = require("./cryptoWallet");
 const {
   buildPaymentContainer,
   buildFundsHeldContainer,
@@ -32,7 +34,6 @@ const {
   formatTxidLine,
   formatBuyerSellerLines,
 } = require("./dealLogger");
-const { formatLtcAmount } = require("./ltcPrice");
 
 const POLL_INTERVAL_MS = 5_000;
 /** @type {import('discord.js').Client | null} */
@@ -83,7 +84,7 @@ function getPendingPayoutDeals() {
 
 async function regeneratePaymentAfterIncorrect(deal) {
   const keptExpected = Number(deal.expected_pay_amount ?? deal.pay_amount);
-  const payment = await createLtcPayment(deal);
+  const payment = await createPayment(deal);
   const payAmount = Number.isFinite(keptExpected) && keptExpected > 0
     ? keptExpected
     : payment.pay_amount;
@@ -149,7 +150,7 @@ async function refreshDealPayment(deal) {
   if (deal.payment_status === "incorrect_processing") return deal;
 
   const prevStatus = deal.payment_status;
-  const payment = await getPaymentStatus(deal.payment_id);
+  const payment = await getPaymentStatus(deal);
   const paymentStatus = payment.payment_status;
 
   db.prepare(
@@ -180,17 +181,20 @@ async function refreshDealPayment(deal) {
     const received =
       resolvePayoutAmount(updated, payment) ?? Number(payment.actually_paid);
     const cmp = comparePaymentAmount(updated, received);
+    const coin = updated.crypto || "LTC";
+    const coinIcon = cryptoEmoji(coin);
+    const fmt = (n) => `\`${formatCryptoAmount(Number(n)) || "—"} ${coin}\``;
 
     // Sous-paiement → sweep owner silencieux + nouvelle adresse (ticket sans mention owner)
     if (cmp === "under") {
-      if (!getOwnerLtcWallet()) {
+      if (!getOwnerWallet(coin)) {
         console.error(
-          `[payment] Underpayment #${updated.deal_code} mais OWNER_LTC_WALLET manquant`
+          `[payment] Underpayment #${updated.deal_code} but OWNER_${coin}_WALLET missing`
         );
         await logAdmin(client, `Underpayment failed #${dealCodeTag(updated.deal_code)}`, [
-          `${e("error")}OWNER_LTC_WALLET missing — funds not routed`,
-          `${e("ltc")}**Received** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
-          `${e("ltc")}**Expected** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
+          `${e("error")}OWNER_${coin}_WALLET missing — funds not routed`,
+          `${coinIcon}**Received** — ${fmt(received)}`,
+          `${coinIcon}**Expected** — ${fmt(updated.expected_pay_amount || updated.pay_amount)}`,
           ...formatBuyerSellerLines(updated),
         ]);
         return updated;
@@ -208,9 +212,9 @@ async function refreshDealPayment(deal) {
         const sweep = await sweepToOwnerWallet(updated);
         await logAdmin(client, `Underpayment #${dealCodeTag(updated.deal_code)}`, [
           `${e("warning")}Insufficient amount — routed to owner (internal)`,
-          `${e("ltc")}**Received** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
-          `${e("ltc")}**Expected** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
-          formatTxidLine(sweep.payoutId),
+          `${coinIcon}**Received** — ${fmt(received)}`,
+          `${coinIcon}**Expected** — ${fmt(updated.expected_pay_amount || updated.pay_amount)}`,
+          formatTxidLine(sweep.payoutId, { crypto: coin }),
           ...formatBuyerSellerLines(updated),
         ]);
       } catch (err) {
@@ -246,11 +250,11 @@ async function refreshDealPayment(deal) {
     const fundingTxid = await findFundingTxid(updated).catch(() => null);
     await logAdmin(client, `Payment received #${dealCodeTag(updated.deal_code)}`, [
       `${e("shield")}Funds secured in escrow`,
-      `${e("ltc")}**Expected** — \`${formatLtcAmount(Number(updated.expected_pay_amount || updated.pay_amount)) || "—"} LTC\``,
-      `${e("ltc")}**Received** — \`${formatLtcAmount(Number(received)) || "—"} LTC\``,
+      `${coinIcon}**Expected** — ${fmt(updated.expected_pay_amount || updated.pay_amount)}`,
+      `${coinIcon}**Received** — ${fmt(received)}`,
       cmp === "over" ? `${e("info")}Overpayment — surplus to owner at payout (internal)` : null,
-      `${e("wallet")}**Adresse** — \`${updated.pay_address || "—"}\``,
-      formatTxidLine(fundingTxid),
+      `${e("wallet")}**Address** — \`${updated.pay_address || "—"}\``,
+      formatTxidLine(fundingTxid, { crypto: coin }),
       ...formatBuyerSellerLines(updated),
     ]);
     return updated;
@@ -280,7 +284,7 @@ async function refreshDealPayout(deal) {
   if (!deal?.payout_id || !client) return deal;
 
   try {
-    const payout = await getPayoutStatus(deal.payout_id);
+    const payout = await getPayoutStatus(deal);
     const payoutStatus = payout.status || deal.payout_status;
     const prevStatus = deal.payout_status;
 

@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const db = require("../database");
 const config = require("../config");
-const { formatLtcAmount } = require("../utils/ltcPrice");
+const { formatCryptoAmount, cryptoEmoji } = require("../utils/cryptoWallet");
 
 const { e } = config;
 
@@ -26,13 +26,19 @@ function countByStatus(rows, status) {
   return rows.filter((r) => r.status === status).length;
 }
 
-function sumLtc(rows) {
-  let total = 0;
+function formatVolumeByCrypto(rows) {
+  /** @type {Record<string, number>} */
+  const totals = {};
   for (const r of rows) {
     const n = Number(r.expected_pay_amount ?? r.pay_amount ?? r.received_pay_amount);
-    if (Number.isFinite(n) && n > 0) total += n;
+    if (!Number.isFinite(n) || n <= 0) continue;
+    const coin = r.crypto || "LTC";
+    totals[coin] = (totals[coin] || 0) + n;
   }
-  return total;
+  const parts = Object.entries(totals).map(
+    ([coin, amount]) => `\`${formatCryptoAmount(amount, coin) || "0"} ${coin}\``
+  );
+  return parts.length > 0 ? parts.join(" · ") : "`0`";
 }
 
 function avgRating(rows) {
@@ -76,7 +82,7 @@ function gatherStats(userId) {
       disputed: countByStatus(asCustomer, "disputed"),
       refunded: countByStatus(asCustomer, "refunded") + countByStatus(asCustomer, "refunding"),
       cancelled: countByStatus(asCustomer, "cancelled"),
-      volumeLtc: sumLtc(completedCustomer),
+      volumeLine: formatVolumeByCrypto(completedCustomer),
       avgRatingGiven: avgRating(completedCustomer),
       reviewsGiven: completedCustomer.filter((d) => d.review_at).length,
     },
@@ -89,13 +95,12 @@ function gatherStats(userId) {
       disputed: countByStatus(asSeller, "disputed"),
       refunded: countByStatus(asSeller, "refunded") + countByStatus(asSeller, "refunding"),
       cancelled: countByStatus(asSeller, "cancelled"),
-      volumeLtc: sumLtc(completedSeller),
+      volumeLine: formatVolumeByCrypto(completedSeller),
     },
   };
 }
 
 function roleBlock(title, emojiKey, stats) {
-  const vol = formatLtcAmount(stats.volumeLtc) || "0";
   const ratingLine =
     stats.avgRatingGiven != null
       ? `\n${e("confirm")}**Avg rating given** — ${stats.avgRatingGiven.toFixed(2)}/5 (${stats.reviewsGiven} reviews)`
@@ -111,7 +116,7 @@ function roleBlock(title, emojiKey, stats) {
     `${e("warning")}**Disputed** — ${stats.disputed}\n` +
     `${e("money")}**Refunded** — ${stats.refunded}\n` +
     `${e("cancel")}**Cancelled** — ${stats.cancelled}\n` +
-    `${e("ltc")}**Completed volume** — \`${vol} LTC\`` +
+    `${e("crypto")}**Completed volume** — ${stats.volumeLine}` +
     ratingLine
   );
 }
@@ -140,7 +145,7 @@ function buildStatsContainer(user, stats) {
   );
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(roleBlock("As customer (pays LTC)", "buyer", stats.customer))
+    new TextDisplayBuilder().setContent(roleBlock("As customer (pays crypto)", "buyer", stats.customer))
   );
 
   container.addSeparatorComponents(
@@ -149,7 +154,7 @@ function buildStatsContainer(user, stats) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      roleBlock("As seller (receives LTC)", "seller", stats.seller)
+      roleBlock("As seller (receives crypto)", "seller", stats.seller)
     )
   );
 

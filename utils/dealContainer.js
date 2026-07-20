@@ -8,8 +8,14 @@ const {
   SeparatorSpacingSize,
 } = require("discord.js");
 const config = require("../config");
-const { formatLtcAmount } = require("./ltcPrice");
-const { statusLabel, getExplorerTxUrl } = require("./ltcWallet");
+const {
+  formatCryptoAmount,
+  statusLabel,
+  getExplorerTxUrl,
+  cryptoEmoji,
+  networkFeesLabel,
+  networkName,
+} = require("./cryptoWallet");
 const { formatAuthor } = require("./userPrefs");
 const { dealCodeTag, formatCryptoAmountLine, discordTimestamp } = require("./dealLogger");
 
@@ -35,11 +41,19 @@ function addTitleOnly(container, deal) {
   );
 }
 
-function formatTxBlock(txid) {
+function formatAmount(deal, value) {
+  const crypto = deal.crypto || "LTC";
+  return formatCryptoAmount(Number(value), crypto) || "—";
+}
+
+function formatTxBlock(txid, crypto = "LTC") {
   const id = String(txid || "").trim();
   if (!id) return null;
-  if (/^[a-f0-9]{64}$/i.test(id)) {
-    return `${e("info")}**TXID** — \`${id}\` · [Link](${getExplorerTxUrl(id)})`;
+  try {
+    const url = getExplorerTxUrl(crypto, id);
+    if (url) return `${e("info")}**TXID** — \`${id}\` · [Link](${url})`;
+  } catch {
+    // fall through
   }
   return `${e("info")}**TXID** — \`${id}\``;
 }
@@ -84,7 +98,7 @@ function buildRoleSelectionContainer(deal) {
   addTitleOnly(container, deal);
 
   const crypto = deal.crypto || "LTC";
-  const amount = formatLtcAmount(Number(deal.pay_amount));
+  const amount = formatAmount(deal, deal.pay_amount);
   const customerLabel = deal.buyer_id ? `<@${deal.buyer_id}>` : "*pending*";
   const sellerLabel = deal.seller_id ? `<@${deal.seller_id}>` : "*pending*";
 
@@ -92,7 +106,7 @@ function buildRoleSelectionContainer(deal) {
     new TextDisplayBuilder().setContent(
       `${e("product")}**Product** — ${deal.product}\n` +
         `${e("money")}**Price** — ${deal.price}${deal.currency}` +
-        (amount ? `\n${e("ltc")}**${crypto}** — \`${amount} ${crypto}\`` : "") +
+        (amount ? `\n${cryptoEmoji(crypto)}**${crypto}** — \`${amount} ${crypto}\`` : "") +
         `\n\n## ${e("roles")}Choose your role\n` +
         `Each participant clicks **${ROLE_PAYER}** or **${ROLE_RECEIVER}**.\n\n` +
         `${e("buyer")}**${ROLE_PAYER}** — ${customerLabel}\n` +
@@ -190,7 +204,7 @@ function buildPaymentContainer(deal) {
   const container = new ContainerBuilder();
 
   const amount =
-    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
+    formatAmount(deal, deal.expected_pay_amount || deal.pay_amount) || "—";
   const address = deal.pay_address || "*generating address*";
   const status = statusLabel(deal.payment_status || "waiting");
   const crypto = deal.crypto || "LTC";
@@ -199,7 +213,7 @@ function buildPaymentContainer(deal) {
     new TextDisplayBuilder().setContent(
       `## ${e("payment")}Escrow payment\n` +
         `${e("buyer")}<@${deal.buyer_id}> must send **exactly** the amount below.\n\n` +
-        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+        `${cryptoEmoji(crypto)}**Amount** — \`${amount} ${crypto}\`\n` +
         `${e("money")}**Price** — ${deal.price}${deal.currency}\n` +
         `${e("wallet")}**Address** — \`${address}\`\n` +
         `${e("clock")}**Status** — ${status}\n\n` +
@@ -224,7 +238,7 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
       `## ${e("error")}Address unavailable\n` +
         `\`${errorMessage || "unknown error"}\`\n\n` +
         (isMin
-          ? `${e("info")}Amount too low for Litecoin network fees — raise the price slightly.`
+          ? `${e("info")}Amount too low for ${networkFeesLabel(deal.crypto)} — raise the price slightly.`
           : `${e("next")}Try again: a new address will be generated.`)
     )
   );
@@ -244,14 +258,14 @@ function buildPaymentSetupErrorContainer(deal, errorMessage) {
 function buildPaymentDetectedContainer(deal) {
   const container = new ContainerBuilder();
   const amount =
-    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
+    formatAmount(deal, deal.expected_pay_amount || deal.pay_amount) || "—";
   const crypto = deal.crypto || "LTC";
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("clock")}Payment detected\n` +
         `${e("success")}A payment was detected on the escrow address.\n\n` +
-        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+        `${cryptoEmoji(crypto)}**Amount** — \`${amount} ${crypto}\`\n` +
         `${e("clock")}Waiting for **blockchain confirmation**…\n\n` +
         `${e("info")}The next message will appear once the payment is confirmed.`
     )
@@ -263,7 +277,7 @@ function buildPaymentDetectedContainer(deal) {
 function buildPaymentRetryContainer(deal) {
   const container = new ContainerBuilder();
   const amount =
-    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
+    formatAmount(deal, deal.expected_pay_amount || deal.pay_amount) || "—";
   const address = deal.pay_address || "*address pending*";
   const crypto = deal.crypto || "LTC";
 
@@ -273,7 +287,7 @@ function buildPaymentRetryContainer(deal) {
         `The amount received does not match the exact amount required.\n` +
         `${e("warning")}**No refund** will be issued.\n\n` +
         `${e("buyer")}<@${deal.buyer_id}> — send **exactly**:\n\n` +
-        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+        `${cryptoEmoji(crypto)}**Amount** — \`${amount} ${crypto}\`\n` +
         `${e("wallet")}**Address** — \`${address}\`\n\n` +
         `${e("warning")}Send **${crypto}** only to this address.`
     )
@@ -357,9 +371,9 @@ function buildReleasedContainer(deal) {
 
   const wallet = deal.seller_wallet || "—";
   const amount =
-    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
+    formatAmount(deal, deal.expected_pay_amount || deal.pay_amount) || "—";
   const crypto = deal.crypto || "LTC";
-  const txBlock = formatTxBlock(deal.payout_id);
+  const txBlock = formatTxBlock(deal.payout_id, crypto);
 
   let body;
   if (deal.payout_error) {
@@ -368,9 +382,9 @@ function buildReleasedContainer(deal) {
       `${e("staff")}Manual release possible to \`${wallet}\`.`;
   } else {
     body =
-      `${e("success")}Payout broadcast on Litecoin.\n\n` +
+      `${e("success")}Payout broadcast on ${networkName(crypto)}.\n\n` +
       `${e("wallet")}**Address** — \`${wallet}\`\n` +
-      `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+      `${cryptoEmoji(crypto)}**Amount** — \`${amount} ${crypto}\`\n` +
       `${e("clock")}**Status** — ${statusLabel(deal.payout_status || "processing")}\n` +
       (txBlock ? `${txBlock}\n` : "") +
       `\n${e("clock")}Awaiting blockchain confirmation…`;
@@ -388,16 +402,16 @@ function buildPayoutConfirmedContainer(deal) {
 
   const wallet = deal.seller_wallet || "—";
   const amount =
-    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
+    formatAmount(deal, deal.expected_pay_amount || deal.pay_amount) || "—";
   const crypto = deal.crypto || "LTC";
-  const txBlock = formatTxBlock(deal.payout_id);
+  const txBlock = formatTxBlock(deal.payout_id, crypto);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("success")}Payout sent\n` +
         `${e("release")}Funds **confirmed** on the blockchain.\n\n` +
         `${e("wallet")}**Address** — \`${wallet}\`\n` +
-        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+        `${cryptoEmoji(crypto)}**Amount** — \`${amount} ${crypto}\`\n` +
         (txBlock ? `${txBlock}\n\n` : "\n") +
         `${e("next")}The customer leaves a review to close the deal.`
     )
@@ -432,6 +446,7 @@ function buildReviewRequestContainer(deal) {
 
 function buildPublicReviewContainer(deal, { botId } = {}) {
   const container = new ContainerBuilder();
+  const crypto = deal.crypto || "LTC";
   const stars =
     deal.review_rating != null
       ? `${"★".repeat(deal.review_rating)}${"☆".repeat(5 - Number(deal.review_rating))}`
@@ -452,7 +467,7 @@ function buildPublicReviewContainer(deal, { botId } = {}) {
     new TextDisplayBuilder().setContent(
       `${authorLine}\n` +
         `${e("escrow")}Review for ${botMention}\n` +
-        `${e("ltc")}${formatCryptoAmountLine(deal)}\n` +
+        `${cryptoEmoji(crypto)}${formatCryptoAmountLine(deal)}\n` +
         `${e("confirm")}**Rating** — ${stars}\n\n` +
         `**Note**\n${deal.review_text || "*No text*"}\n\n` +
         `${e("clock")}${when}`
@@ -524,17 +539,17 @@ function buildRefundPendingContainer(deal) {
   const container = new ContainerBuilder();
   const wallet = deal.buyer_wallet || "—";
   const amount =
-    formatLtcAmount(Number(deal.expected_pay_amount || deal.pay_amount)) || "—";
+    formatAmount(deal, deal.expected_pay_amount || deal.pay_amount) || "—";
   const crypto = deal.crypto || "LTC";
-  const txBlock = formatTxBlock(deal.payout_id);
+  const txBlock = formatTxBlock(deal.payout_id, crypto);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("money")}Refund in progress\n` +
-        `${e("success")}Customer refund broadcast on Litecoin.\n\n` +
+        `${e("success")}Customer refund broadcast on ${networkName(crypto)}.\n\n` +
         `${e("buyer")}**Customer** — <@${deal.buyer_id}>\n` +
         `${e("wallet")}**Address** — \`${wallet}\`\n` +
-        `${e("ltc")}**Amount** — \`${amount} ${crypto}\`\n` +
+        `${cryptoEmoji(crypto)}**Amount** — \`${amount} ${crypto}\`\n` +
         `${e("clock")}**Status** — ${statusLabel(deal.payout_status || "processing")}\n` +
         (txBlock ? `${txBlock}\n` : "") +
         `\n${e("clock")}Awaiting blockchain confirmation…`

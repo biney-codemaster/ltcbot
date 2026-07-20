@@ -29,9 +29,9 @@ function buildHowtoContainer() {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${e("shield")}Secure Litecoin deals between a **customer** and a **seller**.\n` +
+      `${e("shield")}Secure crypto escrow deals between a **customer** and a **seller**.\n` +
         `Funds sit on a dedicated address until delivery is confirmed.\n\n` +
-        `${e("money")}**0 service fees** — only Litecoin network fees apply.`
+        `${e("money")}**0 service fees** — only network fees apply.`
     )
   );
 
@@ -42,7 +42,7 @@ function buildHowtoContainer() {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${e("roles")}Roles\n` +
-        `${e("buyer")}**Customer** — pays the LTC amount into escrow.\n` +
+        `${e("buyer")}**Customer** — pays the crypto amount into escrow.\n` +
         `${e("seller")}**Seller** — delivers the product / receives the payout.\n\n` +
         `Pick your role carefully in the deal channel, then both sides confirm.`
     )
@@ -58,10 +58,10 @@ function buildHowtoContainer() {
         `1. Click **Start a deal** on the deal panel\n` +
         `2. Enter partner ID, product, price, currency & crypto\n` +
         `3. Choose roles → confirm terms\n` +
-        `4. Customer sends **exactly** the LTC amount shown\n` +
+        `4. Customer sends **exactly** the crypto amount shown\n` +
         `5. Seller delivers → customer releases funds\n` +
         `6. Customer leaves a review → channel closes\n\n` +
-        `${e("warning")}If the LTC amount is not exact, **no refund** is issued.`
+        `${e("warning")}If the crypto amount is not exact, **no refund** is issued.`
     )
   );
 
