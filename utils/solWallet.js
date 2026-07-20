@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const bip39 = require("bip39");
-const { derivePath } = require("ed25519-hd-key");
 const {
   Connection,
   Keypair,
@@ -22,6 +22,43 @@ const PREFERRED_RENT_RESERVE = 890_880n;
 
 let connection = null;
 let keypairCache = new Map();
+
+/** SLIP-0010 ed25519 HD derivation (CommonJS — avoids ESM-only ed25519-hd-key). */
+function hmacSha512(key, data) {
+  return crypto.createHmac("sha512", key).update(data).digest();
+}
+
+function getMasterKeyFromSeed(seed) {
+  const I = hmacSha512(Buffer.from("ed25519 seed", "utf8"), seed);
+  return { key: I.subarray(0, 32), chainCode: I.subarray(32) };
+}
+
+function CKDPriv(parent, index) {
+  const indexBuf = Buffer.alloc(4);
+  indexBuf.writeUInt32BE(index >>> 0, 0);
+  const data = Buffer.concat([Buffer.from([0]), parent.key, indexBuf]);
+  const I = hmacSha512(parent.chainCode, data);
+  return { key: I.subarray(0, 32), chainCode: I.subarray(32) };
+}
+
+function derivePath(pathStr, seed) {
+  if (!/^m(\/[0-9]+')+$/.test(pathStr)) {
+    throw new Error(`Invalid ed25519 derivation path: ${pathStr}`);
+  }
+  let node = getMasterKeyFromSeed(seed);
+  const parts = pathStr.replace(/^m\//, "").split("/");
+  for (const part of parts) {
+    const hardened = part.endsWith("'");
+    const raw = Number(hardened ? part.slice(0, -1) : part);
+    if (!Number.isInteger(raw) || raw < 0) {
+      throw new Error(`Invalid path segment: ${part}`);
+    }
+    // ed25519 HD only supports hardened children
+    const index = (raw | 0x80000000) >>> 0;
+    node = CKDPriv(node, index);
+  }
+  return node;
+}
 
 function statusLabel(status) {
   const labels = {
@@ -71,7 +108,7 @@ function deriveKeypair(index) {
 
   const mnemonic = loadOrCreateMnemonic();
   const seed = bip39.mnemonicToSeedSync(mnemonic);
-  const derived = derivePath(`m/44'/501'/${i}'/0'`, seed.toString("hex"));
+  const derived = derivePath(`m/44'/501'/${i}'/0'`, seed);
   const keypair = Keypair.fromSeed(derived.key);
   keypairCache.set(i, keypair);
   return keypair;
