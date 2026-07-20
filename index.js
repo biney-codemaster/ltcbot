@@ -18,6 +18,7 @@ const setupCommand = require("./commands/setup");
 const anonymousCommand = require("./commands/anonymous");
 const statsCommand = require("./commands/stats");
 const howtoCommand = require("./commands/howto");
+const rulesCommand = require("./commands/rules");
 const restartCommand = require("./commands/restart");
 const cancelCommand = require("./commands/cancel");
 const { handleEmojiListMessage } = require("./commands/emojiList");
@@ -70,6 +71,7 @@ const commands = [
   anonymousCommand.data.toJSON(),
   statsCommand.data.toJSON(),
   howtoCommand.data.toJSON(),
+  rulesCommand.data.toJSON(),
   restartCommand.data.toJSON(),
   cancelCommand.data.toJSON(),
 ];
@@ -227,6 +229,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand() && interaction.commandName === "howto") {
       await howtoCommand.execute(interaction);
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === "rules") {
+      await rulesCommand.execute(interaction);
     }
 
     if (interaction.isChatInputCommand() && interaction.commandName === "restart") {

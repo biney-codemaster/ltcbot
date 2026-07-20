@@ -74,6 +74,7 @@ function buildHowtoContainer() {
       `## ${e("info")}Commands\n` +
         `\`/setup\` — post the deal start panel *(staff)*\n` +
         `\`/howto\` — post this guide *(staff)*\n` +
+        `\`/rules\` — post the server rules panel *(staff)*\n` +
         `\`/restart\` — wipe & restart a deal *(staff, deal channel)*\n` +
         `\`/cancel\` — cancel a deal immediately *(staff, deal channel)*\n` +
         `\`+emoji\` — list server emojis for config.js *(staff)*\n` +
