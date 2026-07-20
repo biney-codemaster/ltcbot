@@ -13,8 +13,9 @@ const MAX_USED_SKIP = 200;
 const DEFAULT_GAS_PRICE = ethers.parseUnits("2", "gwei");
 
 let hdRoot = null;
-let providerEntries = null;
-let providerKey = "";
+/** @type {ethers.JsonRpcProvider | null} */
+let cachedProvider = null;
+let cachedProviderUrl = "";
 
 function statusLabel(status) {
   const labels = {
@@ -70,37 +71,63 @@ function addressFromIndex(index) {
 function getRpcUrls() {
   const urls = [
     String(process.env.ETH_RPC_URL || "").trim(),
-    "https://cloudflare-eth.com",
-    "https://eth.llamarpc.com",
+    "https://ethereum.publicnode.com",
+    "https://rpc.ankr.com/eth",
+    "https://1rpc.io/eth",
+    "https://eth.drpc.org",
   ].filter(Boolean);
   return [...new Set(urls)];
 }
 
-function getProviderEntries() {
-  const urls = getRpcUrls();
-  const key = urls.join("|");
-  if (providerEntries && providerKey === key) return providerEntries;
-  providerEntries = urls.map((url) => ({
-    url,
-    provider: new ethers.JsonRpcProvider(url),
-  }));
-  providerKey = key;
-  return providerEntries;
+/** Create a provider that does NOT auto-detect/retry forever (HostMaster log spam). */
+function createProvider(url) {
+  const network = ethers.Network.from(1); // Ethereum mainnet
+  return new ethers.JsonRpcProvider(url, network, {
+    staticNetwork: network,
+    batchMaxCount: 1,
+  });
+}
+
+function destroyProvider(provider) {
+  try {
+    if (provider && typeof provider.destroy === "function") provider.destroy();
+  } catch {
+    // ignore
+  }
 }
 
 async function getHealthyProvider() {
-  let lastErr = null;
-  for (const entry of getProviderEntries()) {
+  const urls = getRpcUrls();
+  if (cachedProvider && cachedProviderUrl && urls.includes(cachedProviderUrl)) {
     try {
-      // eslint-disable-next-line no-await-in-loop
-      await entry.provider.getBlockNumber();
-      return entry.provider;
-    } catch (err) {
-      lastErr = err;
-      console.warn(`[wallet:eth] RPC unavailable ${entry.url}: ${err.message}`);
+      await cachedProvider.getBlockNumber();
+      return cachedProvider;
+    } catch {
+      destroyProvider(cachedProvider);
+      cachedProvider = null;
+      cachedProviderUrl = "";
     }
   }
-  throw new Error(`ETH RPC unavailable: ${lastErr?.message || "no provider responded"}`);
+
+  let lastErr = null;
+  for (const url of urls) {
+    const provider = createProvider(url);
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await provider.getBlockNumber();
+      cachedProvider = provider;
+      cachedProviderUrl = url;
+      return provider;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[wallet:eth] RPC unavailable ${url}: ${err.message}`);
+      destroyProvider(provider);
+    }
+  }
+
+  throw new Error(
+    `ETH RPC unavailable: ${lastErr?.message || "no provider responded"}. Set ETH_RPC_URL in .env (Alchemy / Infura / publicnode).`
+  );
 }
 
 function readIndexFile() {

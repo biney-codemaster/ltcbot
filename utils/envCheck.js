@@ -29,12 +29,10 @@ function validateEnv() {
       "CRYPTO/LTC_WALLET_MNEMONIC vide → le bot utilisera / créera wallet.mnemonic (SAUVEGARDE-LE)"
     );
   }
-  for (const coin of ["LTC", "BTC", "ETH", "SOL"]) {
-    if (!String(process.env[`OWNER_${coin}_WALLET`] || "").trim()) {
-      warnings.push(
-        `OWNER_${coin}_WALLET vide → sous/surpaiements ${coin} ne pourront pas être routés`
-      );
-    }
+  if (!String(process.env.ETH_RPC_URL || "").trim()) {
+    warnings.push(
+      "ETH_RPC_URL empty → public ETH RPCs often fail from VPS; set Alchemy/Infura/publicnode for Ethereum deals"
+    );
   }
   if (!process.env.ADMIN_LOGS_CHANNEL_ID) {
     warnings.push("ADMIN_LOGS_CHANNEL_ID vide → pas de logs admin / transcripts");
