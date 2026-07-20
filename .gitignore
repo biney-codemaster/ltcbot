@@ -4,5 +4,6 @@ escrow.db
 escrow.db-*
 wallet.mnemonic
 wallet.next_index
+wallet.next_index_*
 *.log
 .DS_Store
