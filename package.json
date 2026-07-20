@@ -23,5 +23,8 @@
     "ed25519-hd-key": "^2.0.0",
     "ethers": "^6.17.0",
     "tiny-secp256k1": "^2.2.4"
+  },
+  "overrides": {
+    "typescript": "5.8.3"
   }
 }
