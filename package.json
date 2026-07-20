@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node -e \"require('./utils/cryptoWallet'); require('./utils/btcWallet'); require('./utils/ethWallet'); require('./utils/solWallet'); require('./utils/ltcWallet'); require('./utils/paymentPoller'); require('./utils/dealContainer'); require('./utils/dealLogger'); require('./utils/transcript'); require('./utils/dealFinalize'); require('./utils/userPrefs'); require('./commands/anonymous'); require('./commands/stats'); require('./commands/howto'); require('./commands/rules'); require('./commands/restart'); require('./commands/cancel'); require('./commands/emojiList'); console.log('ok')\""
+    "test": "node -e \"require('./utils/cryptoWallet'); require('./utils/btcWallet'); require('./utils/ethWallet'); require('./utils/solWallet'); require('./utils/ltcWallet'); require('./utils/paymentPoller'); require('./utils/botPresence'); require('./utils/dealContainer'); require('./utils/dealLogger'); require('./utils/transcript'); require('./utils/dealFinalize'); require('./utils/userPrefs'); require('./commands/anonymous'); require('./commands/stats'); require('./commands/howto'); require('./commands/rules'); require('./commands/restart'); require('./commands/cancel'); require('./commands/emojiList'); console.log('ok')\""
   },
   "keywords": [],
   "author": "",

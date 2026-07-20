@@ -52,6 +52,7 @@ const { logEnvValidation } = require("./utils/envCheck");
 const { pingWallets, loadOrCreateMnemonic } = require("./utils/cryptoWallet");
 const { CRYPTO_ASSETS, SUPPORTED_CRYPTOS } = require("./utils/cryptoAssets");
 const { probeLogChannels } = require("./utils/dealLogger");
+const { startBotPresence } = require("./utils/botPresence");
 
 if (!logEnvValidation()) {
   process.exit(1);
@@ -223,6 +224,7 @@ client.once(Events.ClientReady, async () => {
   await probeLogChannels(client);
   startPaymentPoller(client);
   console.log("Crypto wallet polling started (5s).");
+  startBotPresence(client);
 });
 
 client.on("interactionCreate", async (interaction) => {
