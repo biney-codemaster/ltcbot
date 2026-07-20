@@ -3,9 +3,6 @@
  */
 
 const ltc = require("./ltcWallet");
-const btc = require("./btcWallet");
-const eth = require("./ethWallet");
-const sol = require("./solWallet");
 const { normalizeCrypto, getCryptoAsset, SUPPORTED_CRYPTOS, isSupportedCrypto } = require("./cryptoAssets");
 const {
   fiatToCrypto,
@@ -17,20 +14,29 @@ const {
 const { loadOrCreateMnemonic } = require("./sharedMnemonic");
 const { e, emojis } = require("../config");
 
-const adapters = {
-  LTC: ltc,
-  BTC: btc,
-  ETH: eth,
-  SOL: sol,
-};
+/** Lazy-load heavy / ESM-sensitive adapters so the bot can boot even if one chain dep fails. */
+const adapterCache = { LTC: ltc };
+
+function loadAdapter(code) {
+  if (adapterCache[code]) return adapterCache[code];
+  try {
+    if (code === "BTC") adapterCache.BTC = require("./btcWallet");
+    else if (code === "ETH") adapterCache.ETH = require("./ethWallet");
+    else if (code === "SOL") adapterCache.SOL = require("./solWallet");
+    else throw new Error(`Unsupported crypto wallet: ${code}`);
+  } catch (err) {
+    const wrapped = new Error(
+      `${code} wallet unavailable: ${err.message}. Reinstall deps or check HostMaster Node/CJS compatibility.`
+    );
+    wrapped.cause = err;
+    throw wrapped;
+  }
+  return adapterCache[code];
+}
 
 function getAdapter(crypto) {
   const code = normalizeCrypto(crypto) || "LTC";
-  const adapter = adapters[code];
-  if (!adapter) {
-    throw new Error(`Unsupported crypto wallet: ${code}`);
-  }
-  return { code, adapter };
+  return { code, adapter: loadAdapter(code) };
 }
 
 function dealCrypto(deal) {
@@ -50,9 +56,9 @@ async function getPaymentStatus(dealOrPaymentId, maybeCrypto) {
   // Support legacy: getPaymentStatus(paymentId) for LTC-only callers
   if (typeof dealOrPaymentId === "string" || dealOrPaymentId == null) {
     const paymentId = String(dealOrPaymentId || "");
-    if (paymentId.startsWith("hd:btc:")) return btc.getPaymentStatus(paymentId);
-    if (paymentId.startsWith("hd:eth:")) return eth.getPaymentStatus(paymentId);
-    if (paymentId.startsWith("hd:sol:")) return sol.getPaymentStatus(paymentId);
+    if (paymentId.startsWith("hd:btc:")) return loadAdapter("BTC").getPaymentStatus(paymentId);
+    if (paymentId.startsWith("hd:eth:")) return loadAdapter("ETH").getPaymentStatus(paymentId);
+    if (paymentId.startsWith("hd:sol:")) return loadAdapter("SOL").getPaymentStatus(paymentId);
     return ltc.getPaymentStatus(paymentId);
   }
 
@@ -164,8 +170,9 @@ async function pingWallets() {
   const results = {};
   for (const code of SUPPORTED_CRYPTOS) {
     try {
+      const adapter = loadAdapter(code);
       // eslint-disable-next-line no-await-in-loop
-      results[code] = await adapters[code].pingWallet();
+      results[code] = await adapter.pingWallet();
     } catch (err) {
       results[code] = { ok: false, error: err.message };
     }
