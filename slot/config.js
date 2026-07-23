@@ -39,4 +39,9 @@ module.exports = {
   freeSlotDays: optionalInt("SLOT_FREE_DAYS", 30),
   freeEveryonePings: optionalInt("SLOT_FREE_EVERYONE_PINGS", 1),
   freeHerePings: optionalInt("SLOT_FREE_HERE_PINGS", 1),
+  /** Max concurrent free / paid slots per guild */
+  maxFreeSlots: optionalInt("SLOT_MAX_FREE", 10),
+  maxPaidSlots: optionalInt("SLOT_MAX_PAID", 15),
+  /** Invoice lifetime before auto-cancel */
+  purchaseTtlMs: optionalInt("SLOT_PURCHASE_TTL_MS", 2 * 60 * 60 * 1000),
 };

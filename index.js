@@ -57,6 +57,7 @@ const slotCommand = require("./slot/commands/slot");
 const { handleSlotInteraction } = require("./slot/handlers/interactions");
 const { handleSlotMessage } = require("./slot/handlers/messageCreate");
 const { startExpirationLoop } = require("./slot/services/guildActions");
+const { startSlotPaymentPoller } = require("./slot/services/slotPaymentPoller");
 const slotConfig = require("./slot/config");
 
 if (!logEnvValidation()) {
@@ -232,11 +233,15 @@ client.once(Events.ClientReady, async () => {
   console.log("Crypto wallet polling started (5s).");
   startBotPresence(client);
   startExpirationLoop(client, slotConfig.checkIntervalMs);
+  startSlotPaymentPoller(client);
+  console.log(
+    `[slots] caps: free ${slotConfig.maxFreeSlots} · paid ${slotConfig.maxPaidSlots} · payment poller on`
+  );
   if (slotConfig.ownerId) {
     console.log(`[slots] OWNER_ID set — /slot owner commands enabled`);
   } else {
     console.warn(
-      "[slots] OWNER_ID empty — /slot activate works, but owner subcommands (create/config/panels) are locked"
+      "[slots] OWNER_ID empty — /slot activate/buy work, but owner subcommands (create/config/panels) are locked"
     );
   }
 });

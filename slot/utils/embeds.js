@@ -1,6 +1,8 @@
 const { EmbedBuilder } = require('discord.js');
 const { formatDuration, formatTimestamp } = require('./helpers');
 const config = require('../config');
+const { PLANS } = require('../plans');
+const slotService = require('../services/slotService');
 
 const COLOR = 0x2b2d31;
 
@@ -15,10 +17,12 @@ function dealChannelHint() {
 
 function slotEmbed(slot, title = 'Vendor slot') {
   const remaining = formatDuration(slot.expires_at - Date.now());
+  const planName = PLANS[slot.plan]?.name || slot.plan || 'Free';
 
   return baseEmbed(title).addFields(
     { name: 'User', value: `<@${slot.user_id}>`, inline: true },
     { name: 'Channel', value: slot.channel_id ? `<#${slot.channel_id}>` : 'None', inline: true },
+    { name: 'Plan', value: planName, inline: true },
     {
       name: 'Ping limits / day',
       value: `@everyone: **${slot.max_everyone_pings}**\n@here: **${slot.max_here_pings}**`,
@@ -136,6 +140,29 @@ function claimedKeyEmbed(key) {
     );
 }
 
+function paidPlansPanelEmbed(guildId) {
+  const freeUsed = slotService.countFreeSlots(guildId);
+  const paidUsed = slotService.countPaidSlots(guildId);
+  const s = PLANS.standard;
+  const b = PLANS.boost;
+
+  return baseEmbed('Paid Vendor Slots')
+    .setDescription(
+      'Pay in **crypto only** — no middleman. Exact amount → slot created automatically.\n\n' +
+        `**${s.name}** — **€${s.priceEur}/mo** · ${s.everyonePings} @everyone · ${s.herePings} @here / day\n` +
+        `**${b.name}** — **€${b.priceEur}/mo** · ${b.everyonePings} @everyone · ${b.herePings} @here / day\n\n` +
+        `Slots left: free **${Math.max(0, config.maxFreeSlots - freeUsed)}/${config.maxFreeSlots}** · ` +
+        `paid **${Math.max(0, config.maxPaidSlots - paidUsed)}/${config.maxPaidSlots}**\n` +
+        'Products only · Nestoo middleman **mandatory** for sales · over ping limit = revoked'
+    );
+}
+
+function invoiceEmbed(purchase, plan, description) {
+  return baseEmbed(`${plan.name} — pay with ${purchase.crypto}`)
+    .setColor(0xfaa61a)
+    .setDescription(description);
+}
+
 module.exports = {
   slotEmbed,
   listEmbed,
@@ -147,5 +174,7 @@ module.exports = {
   panelEmbed,
   freeKeyPanelEmbed,
   claimedKeyEmbed,
+  paidPlansPanelEmbed,
+  invoiceEmbed,
   dealChannelHint,
 };

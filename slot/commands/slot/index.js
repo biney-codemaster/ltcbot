@@ -1,6 +1,5 @@
 const {
   SlashCommandBuilder,
-  PermissionFlagsBits,
   ChannelType,
   ActionRowBuilder,
   ButtonBuilder,
@@ -13,10 +12,17 @@ const {
   addSlotRole,
   removeSlotRole,
   sendLog,
-  createSlotChannel,
   postSlotGuide,
   deleteSlotChannel,
 } = require('../../services/guildActions');
+const { provisionSlot } = require('../../services/provision');
+const {
+  assertCanActivateFree,
+  startSlotPurchase,
+  formatInvoiceLines,
+  SUPPORTED_CRYPTOS,
+} = require('../../services/slotPayment');
+const { getPlan, PAID_PLAN_IDS } = require('../../plans');
 const { isOwner } = require('../../utils/helpers');
 const {
   slotEmbed,
@@ -25,6 +31,8 @@ const {
   errorEmbed,
   panelEmbed,
   freeKeyPanelEmbed,
+  paidPlansPanelEmbed,
+  invoiceEmbed,
 } = require('../../utils/embeds');
 
 function denyOwner() {
@@ -34,35 +42,13 @@ function denyOwner() {
   };
 }
 
-async function provisionSlot(interaction, user, { days, everyonePings, herePings, title }) {
-  const settings = slotService.getSettings(interaction.guildId);
-
-  let channel;
-  try {
-    channel = await createSlotChannel(interaction.guild, user);
-  } catch (err) {
-    console.error('Failed to create slot channel:', err);
-    return {
-      error: 'Could not create the slot channel. Check bot permissions (Manage Channels).',
-    };
-  }
-
-  const slot = slotService.createSlot({
-    guildId: interaction.guildId,
-    userId: user.id,
-    channelId: channel.id,
-    maxEveryonePings: everyonePings,
-    maxHerePings: herePings,
-    durationDays: days,
-  });
-
-  await postSlotGuide(channel, slot);
-  await addSlotRole(interaction.guild, user.id, settings.slot_role_id);
-  await sendLog(interaction.guild, `Slot created for <@${user.id}>.`, [
-    slotEmbed(slot, title),
-  ]);
-
-  return { slot };
+function invoiceCheckRow(purchaseId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`slotpay:check:${purchaseId}`)
+      .setLabel('I paid — check')
+      .setStyle(ButtonStyle.Success)
+  );
 }
 
 module.exports = {
@@ -78,6 +64,30 @@ module.exports = {
             .setName('key')
             .setDescription('Your free slot key')
             .setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('buy')
+        .setDescription('Buy a paid vendor slot (crypto only)')
+        .addStringOption((opt) =>
+          opt
+            .setName('plan')
+            .setDescription('Standard (€1.5) or Boost (€4)')
+            .setRequired(true)
+            .addChoices(
+              { name: 'Standard — €1.5/mo · 1 everyone · 2 here', value: 'standard' },
+              { name: 'Boost — €4/mo · 2 everyone · 3 here', value: 'boost' }
+            )
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('crypto')
+            .setDescription('Crypto to pay with')
+            .setRequired(true)
+            .addChoices(
+              ...SUPPORTED_CRYPTOS.map((code) => ({ name: code, value: code }))
+            )
         )
     )
     .addSubcommand((sub) =>
@@ -110,6 +120,17 @@ module.exports = {
             .setRequired(true)
             .setMinValue(0)
             .setMaxValue(50)
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('plan')
+            .setDescription('Counts toward free (10) or paid (15) cap')
+            .setRequired(false)
+            .addChoices(
+              { name: 'Free', value: 'free' },
+              { name: 'Standard (paid)', value: 'standard' },
+              { name: 'Boost (paid)', value: 'boost' }
+            )
         )
     )
     .addSubcommand((sub) =>
@@ -205,6 +226,11 @@ module.exports = {
     )
     .addSubcommand((sub) =>
       sub
+        .setName('buypanel')
+        .setDescription('Post the paid plans panel (owner)')
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName('repostguide')
         .setDescription('Repost the slot rules panel in a seller channel (owner)')
         .addUserOption((opt) =>
@@ -252,9 +278,18 @@ module.exports = {
         });
       }
 
+      const freeGate = assertCanActivateFree(guildId);
+      if (!freeGate.ok) {
+        return interaction.reply({
+          embeds: [errorEmbed(freeGate.error)],
+          ephemeral: true,
+        });
+      }
+
       await interaction.deferReply({ ephemeral: true });
 
-      const result = await provisionSlot(interaction, interaction.user, {
+      const result = await provisionSlot(interaction.guild, interaction.user, {
+        planId: 'free',
         days: config.freeSlotDays,
         everyonePings: config.freeEveryonePings,
         herePings: config.freeHerePings,
@@ -279,6 +314,40 @@ module.exports = {
       });
     }
 
+    if (sub === 'buy') {
+      const planId = interaction.options.getString('plan', true);
+      const crypto = interaction.options.getString('crypto', true);
+
+      if (!PAID_PLAN_IDS.includes(planId)) {
+        return interaction.reply({
+          embeds: [errorEmbed('Unknown plan.')],
+          ephemeral: true,
+        });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+
+      const started = await startSlotPurchase({
+        guildId,
+        userId: interaction.user.id,
+        planId,
+        crypto,
+        channelId: interaction.channelId,
+      });
+
+      if (!started.ok) {
+        return interaction.editReply({ embeds: [errorEmbed(started.error)] });
+      }
+
+      const lines = formatInvoiceLines(started.purchase, started.plan);
+      const embed = invoiceEmbed(started.purchase, started.plan, lines.description);
+      const components = [invoiceCheckRow(started.purchase.id)];
+
+      await interaction.user.send({ embeds: [embed], components }).catch(() => null);
+
+      return interaction.editReply({ embeds: [embed], components });
+    }
+
     if (!isOwner(interaction.user.id, config.ownerId)) {
       return interaction.reply(denyOwner());
     }
@@ -288,6 +357,8 @@ module.exports = {
       const days = interaction.options.getInteger('days', true);
       const everyonePings = interaction.options.getInteger('everyone_pings', true);
       const herePings = interaction.options.getInteger('here_pings', true);
+      const planId = interaction.options.getString('plan') || 'standard';
+      const plan = getPlan(planId) || getPlan('standard');
 
       if (slotService.getSlot(guildId, user.id)) {
         return interaction.reply({
@@ -298,9 +369,23 @@ module.exports = {
         });
       }
 
+      if (plan.paid && slotService.countPaidSlots(guildId) >= config.maxPaidSlots) {
+        return interaction.reply({
+          embeds: [errorEmbed(`Paid slots full (${config.maxPaidSlots}).`)],
+          ephemeral: true,
+        });
+      }
+      if (!plan.paid && slotService.countFreeSlots(guildId) >= config.maxFreeSlots) {
+        return interaction.reply({
+          embeds: [errorEmbed(`Free slots full (${config.maxFreeSlots}).`)],
+          ephemeral: true,
+        });
+      }
+
       await interaction.deferReply({ ephemeral: true });
 
-      const result = await provisionSlot(interaction, user, {
+      const result = await provisionSlot(interaction.guild, user, {
+        planId: plan.id,
         days,
         everyonePings,
         herePings,
@@ -504,6 +589,29 @@ module.exports = {
 
       return interaction.reply({
         embeds: [successEmbed('Free key panel posted in this channel.')],
+        ephemeral: true,
+      });
+    }
+
+    if (sub === 'buypanel') {
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('slotbuy:plan:standard')
+          .setLabel('Standard · €1.5')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId('slotbuy:plan:boost')
+          .setLabel('Boost · €4')
+          .setStyle(ButtonStyle.Success)
+      );
+
+      await interaction.channel.send({
+        embeds: [paidPlansPanelEmbed(guildId)],
+        components: [row],
+      });
+
+      return interaction.reply({
+        embeds: [successEmbed('Paid plans panel posted in this channel.')],
         ephemeral: true,
       });
     }

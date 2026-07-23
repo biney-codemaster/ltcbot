@@ -71,6 +71,18 @@ function listSlots(guildId) {
     .all(guildId);
 }
 
+function countFreeSlots(guildId) {
+  return db
+    .prepare(`SELECT COUNT(*) AS n FROM slots WHERE guild_id = ? AND plan = 'free'`)
+    .get(guildId).n;
+}
+
+function countPaidSlots(guildId) {
+  return db
+    .prepare(`SELECT COUNT(*) AS n FROM slots WHERE guild_id = ? AND plan != 'free'`)
+    .get(guildId).n;
+}
+
 function createSlot({
   guildId,
   userId,
@@ -78,18 +90,20 @@ function createSlot({
   maxEveryonePings,
   maxHerePings,
   durationDays,
+  plan = 'free',
 }) {
   const now = Date.now();
   const expiresAt = now + durationDays * 24 * 60 * 60 * 1000;
+  const planId = String(plan || 'free').toLowerCase();
 
   const info = db
     .prepare(`
       INSERT INTO slots (
         guild_id, user_id, channel_id,
         max_everyone_pings, max_here_pings,
-        created_at, expires_at, warned
+        created_at, expires_at, warned, plan
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
     `)
     .run(
       guildId,
@@ -98,7 +112,8 @@ function createSlot({
       maxEveryonePings,
       maxHerePings,
       now,
-      expiresAt
+      expiresAt,
+      planId
     );
 
   return getSlotById(info.lastInsertRowid);
@@ -208,6 +223,8 @@ module.exports = {
   getSlotById,
   getSlotByChannel,
   listSlots,
+  countFreeSlots,
+  countPaidSlots,
   createSlot,
   renewSlot,
   deleteSlot,

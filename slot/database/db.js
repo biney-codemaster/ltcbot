@@ -70,5 +70,37 @@ ensureColumn('settings', 'default_everyone_pings', 'INTEGER NOT NULL DEFAULT 1')
 ensureColumn('settings', 'default_here_pings', 'INTEGER NOT NULL DEFAULT 2');
 ensureColumn('slots', 'max_everyone_pings', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('slots', 'max_here_pings', 'INTEGER NOT NULL DEFAULT 2');
+ensureColumn('slots', 'plan', "TEXT NOT NULL DEFAULT 'free'");
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS slot_purchases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purchase_code TEXT NOT NULL UNIQUE,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    price_eur REAL NOT NULL,
+    crypto TEXT NOT NULL,
+    pay_amount REAL,
+    expected_pay_amount REAL,
+    received_pay_amount REAL,
+    payment_id TEXT,
+    pay_address TEXT,
+    wallet_index INTEGER,
+    status TEXT NOT NULL,
+    payment_status TEXT,
+    channel_id TEXT,
+    message_id TEXT,
+    slot_id INTEGER,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_slot_purchases_awaiting
+    ON slot_purchases(status, expires_at);
+  CREATE INDEX IF NOT EXISTS idx_slot_purchases_user
+    ON slot_purchases(guild_id, user_id, status);
+`);
 
 module.exports = db;
