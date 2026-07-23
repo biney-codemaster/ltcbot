@@ -270,10 +270,9 @@ module.exports = {
       return interaction.editReply({
         embeds: [
           successEmbed(
-            `Free slot activated in <#${result.slot.channel_id}>.\n` +
-              `Duration: **${config.freeSlotDays} days**\n` +
-              `Pings / day: **${config.freeEveryonePings}** @everyone · **${config.freeHerePings}** @here\n` +
-              'Exceeding ping limits will **revoke** your slot.'
+            `Slot ready: <#${result.slot.channel_id}>\n` +
+              `**${config.freeSlotDays}d** · **${config.freeEveryonePings}** @everyone · **${config.freeHerePings}** @here / day\n` +
+              'Over ping limit = revoked.'
           ),
           slotEmbed(result.slot, 'Your slot'),
         ],

@@ -1,5 +1,6 @@
 const slotService = require("../services/slotService");
 const { revokeSlot } = require("../services/guildActions");
+const config = require("../config");
 
 function detectPings(message) {
   const content = message.content || "";
@@ -86,6 +87,11 @@ async function handleSlotMessage(message) {
   if (usedHere) {
     const updated = slotService.incrementHerePing(slot.id);
     lines.push(`\`@here ping used: ${updated.here}/${slot.max_here_pings}\``);
+  }
+
+  const dealChannelId = config.startDealChannelId;
+  if (dealChannelId) {
+    lines.push(`Start a deal → <#${dealChannelId}>`);
   }
 
   if (lines.length) {
