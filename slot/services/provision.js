@@ -5,6 +5,7 @@ const {
   createSlotChannel,
   postSlotGuide,
 } = require("./guildActions");
+const { refreshSlotPanels } = require("./panelSync");
 const { slotEmbed } = require("../utils/embeds");
 const { getPlan } = require("../plans");
 
@@ -48,6 +49,7 @@ async function provisionSlot(guild, user, opts) {
   await sendLog(guild, `Slot created for <@${user.id}> (${plan.name}).`, [
     slotEmbed(slot, title),
   ]);
+  await refreshSlotPanels(guild.client, guild.id);
 
   return { slot, channel, plan };
 }

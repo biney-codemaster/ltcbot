@@ -19,6 +19,11 @@ const { provisionSlot } = require('../../services/provision');
 const {
   assertCanActivateFree,
 } = require('../../services/slotPayment');
+const {
+  freePanelComponents,
+  buyPanelComponents,
+  refreshSlotPanels,
+} = require('../../services/panelSync');
 const { getPlan } = require('../../plans');
 const { isOwner } = require('../../utils/helpers');
 const {
@@ -371,6 +376,7 @@ module.exports = {
       await sendLog(interaction.guild, `Slot deleted for <@${user.id}>.`, [
         slotEmbed(slot, 'Slot deleted'),
       ]);
+      await refreshSlotPanels(interaction.client, guildId);
 
       return interaction.reply({
         embeds: [successEmbed(`Slot for <@${user.id}> has been deleted.`)],
@@ -504,43 +510,27 @@ module.exports = {
     }
 
     if (sub === 'keypanel') {
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('slotkey:claim')
-          .setLabel('Claim free key')
-          .setStyle(ButtonStyle.Success)
-      );
-
-      await interaction.channel.send({
-        embeds: [freeKeyPanelEmbed()],
-        components: [row],
+      const msg = await interaction.channel.send({
+        embeds: [freeKeyPanelEmbed(guildId)],
+        components: freePanelComponents(),
       });
+      slotService.setFreePanelRef(guildId, msg.channelId, msg.id);
 
       return interaction.reply({
-        embeds: [successEmbed('Free key panel posted in this channel.')],
+        embeds: [successEmbed('Free key panel posted — it will auto-update when free slots change.')],
         ephemeral: true,
       });
     }
 
     if (sub === 'buypanel') {
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('slotbuy:plan:standard')
-          .setLabel('Standard · €1.5')
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId('slotbuy:plan:boost')
-          .setLabel('Boost · €4')
-          .setStyle(ButtonStyle.Success)
-      );
-
-      await interaction.channel.send({
+      const msg = await interaction.channel.send({
         embeds: [paidPlansPanelEmbed(guildId)],
-        components: [row],
+        components: buyPanelComponents(),
       });
+      slotService.setBuyPanelRef(guildId, msg.channelId, msg.id);
 
       return interaction.reply({
-        embeds: [successEmbed('Paid plans panel posted in this channel.')],
+        embeds: [successEmbed('Paid plans panel posted — it will auto-update when paid slots change.')],
         ephemeral: true,
       });
     }

@@ -20,6 +20,10 @@ function getSettings(guildId) {
       default_everyone_pings: config.defaultEveryonePings,
       default_here_pings: config.defaultHerePings,
       warn_hours: config.defaultWarnHours,
+      free_panel_channel_id: null,
+      free_panel_message_id: null,
+      buy_panel_channel_id: null,
+      buy_panel_message_id: null,
     }
   );
 }
@@ -31,11 +35,15 @@ function upsertSettings(guildId, patch) {
   db.prepare(`
     INSERT INTO settings (
       guild_id, slot_role_id, log_channel_id, category_id,
-      default_everyone_pings, default_here_pings, warn_hours
+      default_everyone_pings, default_here_pings, warn_hours,
+      free_panel_channel_id, free_panel_message_id,
+      buy_panel_channel_id, buy_panel_message_id
     )
     VALUES (
       @guild_id, @slot_role_id, @log_channel_id, @category_id,
-      @default_everyone_pings, @default_here_pings, @warn_hours
+      @default_everyone_pings, @default_here_pings, @warn_hours,
+      @free_panel_channel_id, @free_panel_message_id,
+      @buy_panel_channel_id, @buy_panel_message_id
     )
     ON CONFLICT(guild_id) DO UPDATE SET
       slot_role_id = excluded.slot_role_id,
@@ -43,10 +51,28 @@ function upsertSettings(guildId, patch) {
       category_id = excluded.category_id,
       default_everyone_pings = excluded.default_everyone_pings,
       default_here_pings = excluded.default_here_pings,
-      warn_hours = excluded.warn_hours
+      warn_hours = excluded.warn_hours,
+      free_panel_channel_id = excluded.free_panel_channel_id,
+      free_panel_message_id = excluded.free_panel_message_id,
+      buy_panel_channel_id = excluded.buy_panel_channel_id,
+      buy_panel_message_id = excluded.buy_panel_message_id
   `).run(next);
 
   return getSettings(guildId);
+}
+
+function setFreePanelRef(guildId, channelId, messageId) {
+  upsertSettings(guildId, {
+    free_panel_channel_id: channelId || null,
+    free_panel_message_id: messageId || null,
+  });
+}
+
+function setBuyPanelRef(guildId, channelId, messageId) {
+  upsertSettings(guildId, {
+    buy_panel_channel_id: channelId || null,
+    buy_panel_message_id: messageId || null,
+  });
 }
 
 function getSlot(guildId, userId) {
@@ -219,6 +245,8 @@ module.exports = {
   parisDayKey,
   getSettings,
   upsertSettings,
+  setFreePanelRef,
+  setBuyPanelRef,
   getSlot,
   getSlotById,
   getSlotByChannel,

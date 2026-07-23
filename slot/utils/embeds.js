@@ -115,11 +115,15 @@ function panelEmbed(settings, slotsCount) {
     );
 }
 
-function freeKeyPanelEmbed() {
+function freeKeyPanelEmbed(guildId) {
+  const freeUsed = guildId ? slotService.countFreeSlots(guildId) : 0;
+  const freeLeft = Math.max(0, config.maxFreeSlots - freeUsed);
+
   return baseEmbed('Free Vendor Slot')
     .setDescription(
       'Claim **1 free key** → `/slot activate` → get your ads channel.\n\n' +
         `**${config.freeSlotDays} days** · **${config.freeEveryonePings}** \`@everyone\` / day · **${config.freeHerePings}** \`@here\` / day\n` +
+        `Free slots left: **${freeLeft}/${config.maxFreeSlots}**\n` +
         'Products only · Nestoo middleman **mandatory** · over ping limit = **revoked**\n' +
         '1 key / user · non-transferable · keep it private'
     );
@@ -141,8 +145,8 @@ function claimedKeyEmbed(key) {
 }
 
 function paidPlansPanelEmbed(guildId) {
-  const freeUsed = slotService.countFreeSlots(guildId);
-  const paidUsed = slotService.countPaidSlots(guildId);
+  const paidUsed = guildId ? slotService.countPaidSlots(guildId) : 0;
+  const paidLeft = Math.max(0, config.maxPaidSlots - paidUsed);
   const s = PLANS.standard;
   const b = PLANS.boost;
 
@@ -151,8 +155,7 @@ function paidPlansPanelEmbed(guildId) {
       'Pay in **LTC only** — no middleman. Exact amount → slot created automatically.\n\n' +
         `**${s.name}** — **€${s.priceEur}/mo** · ${s.everyonePings} @everyone · ${s.herePings} @here / day\n` +
         `**${b.name}** — **€${b.priceEur}/mo** · ${b.everyonePings} @everyone · ${b.herePings} @here / day\n\n` +
-        `Slots left: free **${Math.max(0, config.maxFreeSlots - freeUsed)}/${config.maxFreeSlots}** · ` +
-        `paid **${Math.max(0, config.maxPaidSlots - paidUsed)}/${config.maxPaidSlots}**\n` +
+        `Paid slots left: **${paidLeft}/${config.maxPaidSlots}**\n` +
         'Products only · Nestoo middleman **mandatory** for sales · over ping limit = revoked'
     );
 }

@@ -71,6 +71,10 @@ ensureColumn('settings', 'default_here_pings', 'INTEGER NOT NULL DEFAULT 2');
 ensureColumn('slots', 'max_everyone_pings', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('slots', 'max_here_pings', 'INTEGER NOT NULL DEFAULT 2');
 ensureColumn('slots', 'plan', "TEXT NOT NULL DEFAULT 'free'");
+ensureColumn('settings', 'free_panel_channel_id', 'TEXT');
+ensureColumn('settings', 'free_panel_message_id', 'TEXT');
+ensureColumn('settings', 'buy_panel_channel_id', 'TEXT');
+ensureColumn('settings', 'buy_panel_message_id', 'TEXT');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS slot_purchases (
