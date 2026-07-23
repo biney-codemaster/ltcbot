@@ -3,14 +3,13 @@ const {
   formatCryptoAmount,
   cryptoEmoji,
   getCryptoAsset,
-  SUPPORTED_CRYPTOS,
-  isSupportedCrypto,
-  normalizeCrypto,
 } = require("../../utils/cryptoWallet");
 const config = require("../config");
 const { getPlan, isPaidPlan } = require("../plans");
 const slotService = require("./slotService");
 const purchaseService = require("./purchaseService");
+
+const SLOT_PAY_CRYPTO = "LTC";
 
 function assertCanBuy(guildId, userId, planId) {
   const plan = getPlan(planId);
@@ -48,27 +47,19 @@ function assertCanActivateFree(guildId) {
 }
 
 /**
- * Create crypto invoice for a paid slot (no middleman).
- * Funds go to HD address, then swept to OWNER_* wallet on confirm.
+ * Create LTC invoice for a paid slot (no middleman).
+ * Funds go to HD address, then swept to OWNER_LTC_WALLET on confirm.
  */
-async function startSlotPurchase({ guildId, userId, planId, crypto, channelId = null }) {
+async function startSlotPurchase({ guildId, userId, planId, channelId = null }) {
   const gate = assertCanBuy(guildId, userId, planId);
   if (!gate.ok) return gate;
-
-  const coin = normalizeCrypto(crypto);
-  if (!coin || !isSupportedCrypto(coin)) {
-    return {
-      ok: false,
-      error: `Unsupported crypto. Use: ${SUPPORTED_CRYPTOS.join(", ")}`,
-    };
-  }
 
   const plan = gate.plan;
   const stubDeal = {
     deal_code: `SLOT-PENDING-${userId}`,
     price: plan.priceEur,
     currency: "€",
-    crypto: coin,
+    crypto: SLOT_PAY_CRYPTO,
     pay_amount: null,
   };
 
@@ -82,7 +73,7 @@ async function startSlotPurchase({ guildId, userId, planId, crypto, channelId = 
 
   const payAmount = Number(payment.pay_amount);
   if (!Number.isFinite(payAmount) || payAmount <= 0) {
-    return { ok: false, error: "Could not fetch live crypto rate. Try again." };
+    return { ok: false, error: "Could not fetch live LTC rate. Try again." };
   }
 
   const purchase = purchaseService.createPurchase({
@@ -90,7 +81,7 @@ async function startSlotPurchase({ guildId, userId, planId, crypto, channelId = 
     userId,
     planId: plan.id,
     priceEur: plan.priceEur,
-    crypto: coin,
+    crypto: SLOT_PAY_CRYPTO,
     payAmount,
     paymentId: String(payment.payment_id),
     payAddress: payment.pay_address,
@@ -103,9 +94,9 @@ async function startSlotPurchase({ guildId, userId, planId, crypto, channelId = 
 }
 
 function formatInvoiceLines(purchase, plan) {
-  const asset = getCryptoAsset(purchase.crypto);
+  const asset = getCryptoAsset(SLOT_PAY_CRYPTO);
   const amount = formatCryptoAmount(Number(purchase.expected_pay_amount || purchase.pay_amount));
-  const icon = cryptoEmoji(purchase.crypto);
+  const icon = cryptoEmoji(SLOT_PAY_CRYPTO);
   return {
     title: `${plan.name} slot — €${plan.priceEur}/mo`,
     description:
@@ -115,16 +106,16 @@ function formatInvoiceLines(purchase, plan) {
       `Duration: **${plan.days} days**\n` +
       `Invoice: \`${purchase.purchase_code}\`\n` +
       `Expires <t:${Math.floor(purchase.expires_at / 1000)}:R>\n\n` +
-      "No middleman — once confirmed, your slot is created automatically.\n" +
+      "Pay with **Litecoin (LTC) only**. No middleman — once confirmed, your slot is created automatically.\n" +
       "Wrong amount = not credited (funds routed internally).",
   };
 }
 
 module.exports = {
+  SLOT_PAY_CRYPTO,
   assertCanBuy,
   assertCanActivateFree,
   startSlotPurchase,
   formatInvoiceLines,
   isPaidPlan,
-  SUPPORTED_CRYPTOS,
 };

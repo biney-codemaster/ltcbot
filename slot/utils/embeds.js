@@ -148,7 +148,7 @@ function paidPlansPanelEmbed(guildId) {
 
   return baseEmbed('Paid Vendor Slots')
     .setDescription(
-      'Pay in **crypto only** — no middleman. Exact amount → slot created automatically.\n\n' +
+      'Pay in **LTC only** — no middleman. Exact amount → slot created automatically.\n\n' +
         `**${s.name}** — **€${s.priceEur}/mo** · ${s.everyonePings} @everyone · ${s.herePings} @here / day\n` +
         `**${b.name}** — **€${b.priceEur}/mo** · ${b.everyonePings} @everyone · ${b.herePings} @here / day\n\n` +
         `Slots left: free **${Math.max(0, config.maxFreeSlots - freeUsed)}/${config.maxFreeSlots}** · ` +
@@ -158,7 +158,7 @@ function paidPlansPanelEmbed(guildId) {
 }
 
 function invoiceEmbed(purchase, plan, description) {
-  return baseEmbed(`${plan.name} — pay with ${purchase.crypto}`)
+  return baseEmbed(`${plan.name} — pay with LTC`)
     .setColor(0xfaa61a)
     .setDescription(description);
 }

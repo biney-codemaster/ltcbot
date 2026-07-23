@@ -18,11 +18,8 @@ const {
 const { provisionSlot } = require('../../services/provision');
 const {
   assertCanActivateFree,
-  startSlotPurchase,
-  formatInvoiceLines,
-  SUPPORTED_CRYPTOS,
 } = require('../../services/slotPayment');
-const { getPlan, PAID_PLAN_IDS } = require('../../plans');
+const { getPlan } = require('../../plans');
 const { isOwner } = require('../../utils/helpers');
 const {
   slotEmbed,
@@ -32,7 +29,6 @@ const {
   panelEmbed,
   freeKeyPanelEmbed,
   paidPlansPanelEmbed,
-  invoiceEmbed,
 } = require('../../utils/embeds');
 
 function denyOwner() {
@@ -40,15 +36,6 @@ function denyOwner() {
     embeds: [errorEmbed('Only the bot owner can use this command.')],
     ephemeral: true,
   };
-}
-
-function invoiceCheckRow(purchaseId) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`slotpay:check:${purchaseId}`)
-      .setLabel('I paid — check')
-      .setStyle(ButtonStyle.Success)
-  );
 }
 
 module.exports = {
@@ -64,30 +51,6 @@ module.exports = {
             .setName('key')
             .setDescription('Your free slot key')
             .setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('buy')
-        .setDescription('Buy a paid vendor slot (crypto only)')
-        .addStringOption((opt) =>
-          opt
-            .setName('plan')
-            .setDescription('Standard (€1.5) or Boost (€4)')
-            .setRequired(true)
-            .addChoices(
-              { name: 'Standard — €1.5/mo · 1 everyone · 2 here', value: 'standard' },
-              { name: 'Boost — €4/mo · 2 everyone · 3 here', value: 'boost' }
-            )
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('crypto')
-            .setDescription('Crypto to pay with')
-            .setRequired(true)
-            .addChoices(
-              ...SUPPORTED_CRYPTOS.map((code) => ({ name: code, value: code }))
-            )
         )
     )
     .addSubcommand((sub) =>
@@ -312,40 +275,6 @@ module.exports = {
           slotEmbed(result.slot, 'Your slot'),
         ],
       });
-    }
-
-    if (sub === 'buy') {
-      const planId = interaction.options.getString('plan', true);
-      const crypto = interaction.options.getString('crypto', true);
-
-      if (!PAID_PLAN_IDS.includes(planId)) {
-        return interaction.reply({
-          embeds: [errorEmbed('Unknown plan.')],
-          ephemeral: true,
-        });
-      }
-
-      await interaction.deferReply({ ephemeral: true });
-
-      const started = await startSlotPurchase({
-        guildId,
-        userId: interaction.user.id,
-        planId,
-        crypto,
-        channelId: interaction.channelId,
-      });
-
-      if (!started.ok) {
-        return interaction.editReply({ embeds: [errorEmbed(started.error)] });
-      }
-
-      const lines = formatInvoiceLines(started.purchase, started.plan);
-      const embed = invoiceEmbed(started.purchase, started.plan, lines.description);
-      const components = [invoiceCheckRow(started.purchase.id)];
-
-      await interaction.user.send({ embeds: [embed], components }).catch(() => null);
-
-      return interaction.editReply({ embeds: [embed], components });
     }
 
     if (!isOwner(interaction.user.id, config.ownerId)) {

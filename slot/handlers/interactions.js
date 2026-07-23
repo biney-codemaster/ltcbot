@@ -2,8 +2,6 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
 } = require("discord.js");
 const config = require("../config");
 const slotService = require("../services/slotService");
@@ -21,33 +19,11 @@ const {
 const {
   startSlotPurchase,
   formatInvoiceLines,
-  SUPPORTED_CRYPTOS,
   assertCanBuy,
 } = require("../services/slotPayment");
 const { getPlan } = require("../plans");
 const { checkPurchaseNow } = require("../services/slotPaymentPoller");
 const purchaseService = require("../services/purchaseService");
-const nestooConfig = require("../../config");
-const { CRYPTO_ASSETS } = require("../../utils/cryptoAssets");
-
-function cryptoSelectRow(planId) {
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId(`slotbuy:crypto:${planId}`)
-    .setPlaceholder("Choose crypto to pay with")
-    .addOptions(
-      SUPPORTED_CRYPTOS.map((code) => {
-        const asset = CRYPTO_ASSETS[code];
-        const opt = new StringSelectMenuOptionBuilder()
-          .setLabel(asset.label)
-          .setValue(code)
-          .setDescription(`Pay € with ${asset.name}`);
-        const emoji = nestooConfig.emojis[asset.emojiKey] || nestooConfig.emojis.crypto;
-        if (emoji) opt.setEmoji(emoji);
-        return opt;
-      })
-    );
-  return new ActionRowBuilder().addComponents(menu);
-}
 
 function invoiceComponents(purchaseId) {
   return [
@@ -61,7 +37,7 @@ function invoiceComponents(purchaseId) {
 }
 
 /**
- * Handle slot buttons / selects. Returns true if handled.
+ * Handle slot buttons. Returns true if handled.
  */
 async function handleSlotInteraction(interaction) {
   if (interaction.isButton() && interaction.customId === "slotkey:claim") {
@@ -123,37 +99,18 @@ async function handleSlotInteraction(interaction) {
       return true;
     }
 
-    await interaction.reply({
-      embeds: [
-        successEmbed(
-          `**${plan.name}** — €${plan.priceEur}/mo\n` +
-            `${plan.everyonePings} @everyone · ${plan.herePings} @here / day · ${plan.days} days\n` +
-            "Pick a crypto below."
-        ),
-      ],
-      components: [cryptoSelectRow(planId)],
-      ephemeral: true,
-    });
-    return true;
-  }
-
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("slotbuy:crypto:")) {
-    const planId = interaction.customId.split(":")[2];
-    const crypto = interaction.values[0];
-    await interaction.deferUpdate();
+    await interaction.deferReply({ ephemeral: true });
 
     const started = await startSlotPurchase({
       guildId: interaction.guildId,
       userId: interaction.user.id,
       planId,
-      crypto,
       channelId: interaction.channelId,
     });
 
     if (!started.ok) {
-      await interaction.followUp({
+      await interaction.editReply({
         embeds: [errorEmbed(started.error)],
-        ephemeral: true,
       });
       return true;
     }
@@ -163,10 +120,9 @@ async function handleSlotInteraction(interaction) {
     const components = invoiceComponents(started.purchase.id);
 
     await interaction.user.send({ embeds: [embed], components }).catch(() => null);
-    await interaction.followUp({
+    await interaction.editReply({
       embeds: [embed],
       components,
-      ephemeral: true,
     });
     return true;
   }
@@ -203,7 +159,7 @@ async function handleSlotInteraction(interaction) {
       embeds: [
         warnEmbed(
           `Status: **${fresh.payment_status || fresh.status}**\n` +
-            `Send exact amount to:\n\`${fresh.pay_address}\`\n` +
+            `Send exact LTC amount to:\n\`${fresh.pay_address}\`\n` +
             "I'll keep watching automatically."
         ),
       ],
