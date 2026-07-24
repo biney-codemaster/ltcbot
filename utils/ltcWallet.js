@@ -26,8 +26,8 @@ const WALLET_FILE = path.join(__dirname, "..", "wallet.mnemonic");
 const ACCOUNT_PATH = "m/84'/2'/0'/0";
 /** Dust / fee buffer only — pas de minimum commercial. */
 const DUST_LITOSHIS = 546n;
-/** Accept underpay up to 0.0001 LTC (covers wallet/exchange rounding). */
-const UNDERPAY_TOLERANCE_LITOSHIS = 10_000n;
+/** Accept underpay up to 0.00001 LTC (covers wallet/exchange rounding). */
+const UNDERPAY_TOLERANCE_LITOSHIS = 1_000n;
 const DEFAULT_FEE_RATE = 2; // lit/vB
 
 const PAID_STATUSES = new Set(["paid"]);
