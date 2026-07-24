@@ -98,15 +98,38 @@ function listSlots(guildId) {
 }
 
 function countFreeSlots(guildId) {
+  // Active free slots only — unused claimed keys do NOT count.
   return db
-    .prepare(`SELECT COUNT(*) AS n FROM slots WHERE guild_id = ? AND plan = 'free'`)
+    .prepare(
+      `SELECT COUNT(*) AS n FROM slots
+       WHERE guild_id = ?
+         AND LOWER(COALESCE(plan, 'free')) = 'free'`
+    )
     .get(guildId).n;
 }
 
 function countPaidSlots(guildId) {
+  // Active paid slots only — open LTC invoices do NOT count.
   return db
-    .prepare(`SELECT COUNT(*) AS n FROM slots WHERE guild_id = ? AND plan != 'free'`)
+    .prepare(
+      `SELECT COUNT(*) AS n FROM slots
+       WHERE guild_id = ?
+         AND LOWER(COALESCE(plan, 'free')) != 'free'`
+    )
     .get(guildId).n;
+}
+
+function getSlotOccupancy(guildId) {
+  const freeUsed = countFreeSlots(guildId);
+  const paidUsed = countPaidSlots(guildId);
+  return {
+    freeUsed,
+    paidUsed,
+    freeLeft: Math.max(0, config.maxFreeSlots - freeUsed),
+    paidLeft: Math.max(0, config.maxPaidSlots - paidUsed),
+    maxFree: config.maxFreeSlots,
+    maxPaid: config.maxPaidSlots,
+  };
 }
 
 function createSlot({
@@ -253,6 +276,7 @@ module.exports = {
   listSlots,
   countFreeSlots,
   countPaidSlots,
+  getSlotOccupancy,
   createSlot,
   renewSlot,
   deleteSlot,

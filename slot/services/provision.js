@@ -5,7 +5,7 @@ const {
   createSlotChannel,
   postSlotGuide,
 } = require("./guildActions");
-const { refreshSlotPanels } = require("./panelSync");
+const { refreshPanelsForPlan } = require("./panelSync");
 const { slotEmbed } = require("../utils/embeds");
 const { getPlan } = require("../plans");
 
@@ -49,7 +49,9 @@ async function provisionSlot(guild, user, opts) {
   await sendLog(guild, `Slot created for <@${user.id}> (${plan.name}).`, [
     slotEmbed(slot, title),
   ]);
-  await refreshSlotPanels(guild.client, guild.id);
+  // Count drops only here (slot row created) — not when a free key is claimed
+  // or when a paid LTC invoice is opened.
+  await refreshPanelsForPlan(guild.client, guild.id, plan.id);
 
   return { slot, channel, plan };
 }

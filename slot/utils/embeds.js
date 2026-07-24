@@ -116,14 +116,16 @@ function panelEmbed(settings, slotsCount) {
 }
 
 function freeKeyPanelEmbed(guildId) {
-  const freeUsed = guildId ? slotService.countFreeSlots(guildId) : 0;
-  const freeLeft = Math.max(0, config.maxFreeSlots - freeUsed);
+  const occ = guildId
+    ? slotService.getSlotOccupancy(guildId)
+    : { freeLeft: config.maxFreeSlots, maxFree: config.maxFreeSlots };
 
   return baseEmbed('Free Vendor Slot')
     .setDescription(
       'Claim **1 free key** → `/slot activate` → get your ads channel.\n\n' +
         `**${config.freeSlotDays} days** · **${config.freeEveryonePings}** \`@everyone\` / day · **${config.freeHerePings}** \`@here\` / day\n` +
-        `Free slots left: **${freeLeft}/${config.maxFreeSlots}**\n` +
+        `Free slots left: **${occ.freeLeft}/${occ.maxFree}**\n` +
+        '_Claiming a key does not reserve a spot — only `/slot activate` does._\n' +
         'Products only · Nestoo middleman **mandatory** · over ping limit = **revoked**\n' +
         '1 key / user · non-transferable · keep it private'
     );
@@ -145,8 +147,9 @@ function claimedKeyEmbed(key) {
 }
 
 function paidPlansPanelEmbed(guildId) {
-  const paidUsed = guildId ? slotService.countPaidSlots(guildId) : 0;
-  const paidLeft = Math.max(0, config.maxPaidSlots - paidUsed);
+  const occ = guildId
+    ? slotService.getSlotOccupancy(guildId)
+    : { paidLeft: config.maxPaidSlots, maxPaid: config.maxPaidSlots };
   const s = PLANS.standard;
   const b = PLANS.boost;
 
@@ -155,7 +158,8 @@ function paidPlansPanelEmbed(guildId) {
       'Pay in **LTC only** — no middleman. Exact amount → slot created automatically.\n\n' +
         `**${s.name}** — **€${s.priceEur}/mo** · ${s.everyonePings} @everyone · ${s.herePings} @here / day\n` +
         `**${b.name}** — **€${b.priceEur}/mo** · ${b.everyonePings} @everyone · ${b.herePings} @here / day\n\n` +
-        `Paid slots left: **${paidLeft}/${config.maxPaidSlots}**\n` +
+        `Paid slots left: **${occ.paidLeft}/${occ.maxPaid}**\n` +
+        '_Unpaid invoices do not reserve a spot — only a confirmed payment does._\n' +
         'Products only · Nestoo middleman **mandatory** for sales · over ping limit = revoked'
     );
 }

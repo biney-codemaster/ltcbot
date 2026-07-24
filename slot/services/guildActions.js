@@ -1,6 +1,6 @@
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const slotService = require('./slotService');
-const { refreshSlotPanels } = require('./panelSync');
+const { refreshSlotPanels, refreshPanelsForPlan } = require('./panelSync');
 const { slotEmbed, warnEmbed, noticeEmbed, slotChannelGuideEmbed } = require('../utils/embeds');
 const { sanitizeChannelName } = require('../utils/helpers');
 
@@ -109,7 +109,7 @@ async function revokeSlot(client, slot, reason = 'Ping limit exceeded') {
   const guild = await client.guilds.fetch(slot.guild_id).catch(() => null);
   if (!guild) {
     slotService.deleteSlot(slot.guild_id, slot.user_id);
-    await refreshSlotPanels(client, slot.guild_id);
+    await refreshPanelsForPlan(client, slot.guild_id, slot.plan || 'free');
     return;
   }
 
@@ -152,14 +152,14 @@ async function revokeSlot(client, slot, reason = 'Ping limit exceeded') {
     ],
   });
 
-  await refreshSlotPanels(client, guild.id);
+  await refreshPanelsForPlan(client, guild.id, deleted?.plan || slot.plan || 'free');
 }
 
 async function handleExpiration(client, slot) {
   const guild = await client.guilds.fetch(slot.guild_id).catch(() => null);
   if (!guild) {
     slotService.deleteSlot(slot.guild_id, slot.user_id);
-    await refreshSlotPanels(client, slot.guild_id);
+    await refreshPanelsForPlan(client, slot.guild_id, slot.plan || 'free');
     return;
   }
 
@@ -184,7 +184,7 @@ async function handleExpiration(client, slot) {
     ],
   });
 
-  await refreshSlotPanels(client, guild.id);
+  await refreshPanelsForPlan(client, guild.id, deleted?.plan || slot.plan || 'free');
 }
 
 async function handleWarning(client, slot) {

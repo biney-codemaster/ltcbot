@@ -1,6 +1,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const slotService = require("./slotService");
 const { freeKeyPanelEmbed, paidPlansPanelEmbed } = require("../utils/embeds");
+const { isPaidPlan } = require("../plans");
 
 function freePanelComponents() {
   return [
@@ -59,7 +60,7 @@ async function refreshBuyPanel(client, guildId) {
   });
 }
 
-/** Refresh free + paid public panels after slot create / free-up. */
+/** Refresh both panels (e.g. unknown plan on delete). */
 async function refreshSlotPanels(client, guildId) {
   if (!client || !guildId) return;
   await Promise.all([
@@ -68,10 +69,24 @@ async function refreshSlotPanels(client, guildId) {
   ]);
 }
 
+/**
+ * Update only the panel affected by a slot create/delete.
+ * Unused free keys / unpaid invoices never trigger this.
+ */
+async function refreshPanelsForPlan(client, guildId, planId) {
+  if (!client || !guildId) return;
+  if (isPaidPlan(planId)) {
+    await refreshBuyPanel(client, guildId);
+  } else {
+    await refreshFreePanel(client, guildId);
+  }
+}
+
 module.exports = {
   freePanelComponents,
   buyPanelComponents,
   refreshFreePanel,
   refreshBuyPanel,
   refreshSlotPanels,
+  refreshPanelsForPlan,
 };

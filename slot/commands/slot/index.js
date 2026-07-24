@@ -22,7 +22,7 @@ const {
 const {
   freePanelComponents,
   buyPanelComponents,
-  refreshSlotPanels,
+  refreshPanelsForPlan,
 } = require('../../services/panelSync');
 const { getPlan } = require('../../plans');
 const { isOwner } = require('../../utils/helpers');
@@ -376,7 +376,7 @@ module.exports = {
       await sendLog(interaction.guild, `Slot deleted for <@${user.id}>.`, [
         slotEmbed(slot, 'Slot deleted'),
       ]);
-      await refreshSlotPanels(interaction.client, guildId);
+      await refreshPanelsForPlan(interaction.client, guildId, slot.plan || 'free');
 
       return interaction.reply({
         embeds: [successEmbed(`Slot for <@${user.id}> has been deleted.`)],
