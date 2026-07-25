@@ -25,9 +25,16 @@ const EXPLORER_BASE = "https://litecoinspace.org/api";
 const WALLET_FILE = path.join(__dirname, "..", "wallet.mnemonic");
 const ACCOUNT_PATH = "m/84'/2'/0'/0";
 /** Dust / fee buffer only — pas de minimum commercial. */
+/** Network dust floor (legacy P2PKH can be picky — keep a safety margin). */
 const DUST_LITOSHIS = 546n;
+/** If owner remainder is below this, skip split and send everything to seller. */
+const SPLIT_MIN_OWNER_LITOSHIS = 1_000n;
 /** Accept underpay up to 0.00001 LTC (covers wallet/exchange rounding). */
 const UNDERPAY_TOLERANCE_LITOSHIS = 1_000n;
+
+function isDustBroadcastError(err) {
+  return /dust|min relay|dusty/i.test(String(err?.message || err || ""));
+}
 const DEFAULT_FEE_RATE = 2; // lit/vB
 
 const PAID_STATUSES = new Set(["paid"]);
@@ -686,8 +693,8 @@ async function payoutToSeller(deal) {
   let fee = BigInt(estimateVsize(spendable.length, 2) * feeRate);
   let ownerValue = total - expected - fee;
 
-  if (ownerValue <= DUST_LITOSHIS) {
-    // Pas assez de surplus pour une 2e sortie → sweep vendeur (frais inclus)
+  if (ownerValue < SPLIT_MIN_OWNER_LITOSHIS) {
+    // Pas assez de surplus propre pour une 2e sortie → tout au vendeur
     return sweepDealToAddress(deal, seller);
   }
 
@@ -707,7 +714,7 @@ async function payoutToSeller(deal) {
   if (fee < needed) {
     fee = needed;
     ownerValue = total - expected - fee;
-    if (ownerValue <= DUST_LITOSHIS) {
+    if (ownerValue < SPLIT_MIN_OWNER_LITOSHIS) {
       return sweepDealToAddress(deal, seller);
     }
     ({ tx, sellerValue, ownerValue: ownOut } = buildSplitTransaction(
@@ -727,11 +734,19 @@ async function payoutToSeller(deal) {
   try {
     txid = await explorerPostTx(tx.toHex());
   } catch (err) {
+    // Dust / reject on split → fall back to single payout to seller (funds never left escrow)
+    if (isDustBroadcastError(err)) {
+      console.warn(
+        `[wallet] split dust on deal=${deal.deal_code}, fallback sweep→seller:`,
+        err.message
+      );
+      return sweepDealToAddress(deal, seller);
+    }
     const required = parseMinRelayRequired(err.message);
     if (required == null) throw err;
     fee = required + 20n;
     ownerValue = total - expected - fee;
-    if (ownerValue <= DUST_LITOSHIS) {
+    if (ownerValue < SPLIT_MIN_OWNER_LITOSHIS) {
       return sweepDealToAddress(deal, seller);
     }
     ({ tx, sellerValue, ownerValue: ownOut } = buildSplitTransaction(
@@ -745,7 +760,18 @@ async function payoutToSeller(deal) {
       fee,
       total
     ));
-    txid = await explorerPostTx(tx.toHex());
+    try {
+      txid = await explorerPostTx(tx.toHex());
+    } catch (err2) {
+      if (isDustBroadcastError(err2)) {
+        console.warn(
+          `[wallet] split dust after fee bump deal=${deal.deal_code}, fallback sweep→seller:`,
+          err2.message
+        );
+        return sweepDealToAddress(deal, seller);
+      }
+      throw err2;
+    }
   }
 
   console.log(

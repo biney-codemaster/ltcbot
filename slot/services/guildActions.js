@@ -1,6 +1,6 @@
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const slotService = require('./slotService');
-const { refreshSlotPanels, refreshPanelsForPlan } = require('./panelSync');
+const { refreshPanelsForPlan } = require('./panelSync');
 const { slotEmbed, warnEmbed, noticeEmbed, slotChannelGuideEmbed } = require('../utils/embeds');
 const { sanitizeChannelName } = require('../utils/helpers');
 
