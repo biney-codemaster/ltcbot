@@ -14,6 +14,11 @@ function validateEnv() {
   if (!process.env.STAFF_ROLE_ID) {
     warnings.push("STAFF_ROLE_ID empty → staff may lack deal channel access");
   }
+  if (!String(process.env.OWNER_ID || "").trim()) {
+    warnings.push(
+      "OWNER_ID empty → /slot owner commands (create/config/panels) will be locked"
+    );
+  }
   {
     const raw = String(process.env.CUSTOMER_ROLE_ID || "").trim();
     if (!raw) {

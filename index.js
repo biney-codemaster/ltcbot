@@ -53,6 +53,12 @@ const { pingWallets, loadOrCreateMnemonic } = require("./utils/cryptoWallet");
 const { CRYPTO_ASSETS, SUPPORTED_CRYPTOS } = require("./utils/cryptoAssets");
 const { probeLogChannels } = require("./utils/dealLogger");
 const { startBotPresence } = require("./utils/botPresence");
+const slotCommand = require("./slot/commands/slot");
+const { handleSlotInteraction } = require("./slot/handlers/interactions");
+const { handleSlotMessage } = require("./slot/handlers/messageCreate");
+const { startExpirationLoop } = require("./slot/services/guildActions");
+const { startSlotPaymentPoller } = require("./slot/services/slotPaymentPoller");
+const slotConfig = require("./slot/config");
 
 if (!logEnvValidation()) {
   process.exit(1);
@@ -76,6 +82,7 @@ const commands = [
   rulesCommand.data.toJSON(),
   restartCommand.data.toJSON(),
   cancelCommand.data.toJSON(),
+  slotCommand.data.toJSON(),
 ];
 
 async function registerCommands() {
@@ -225,6 +232,18 @@ client.once(Events.ClientReady, async () => {
   startPaymentPoller(client);
   console.log("Crypto wallet polling started (5s).");
   startBotPresence(client);
+  startExpirationLoop(client, slotConfig.checkIntervalMs);
+  startSlotPaymentPoller(client);
+  console.log(
+    `[slots] caps: free ${slotConfig.maxFreeSlots} · paid ${slotConfig.maxPaidSlots} · payment poller on`
+  );
+  if (slotConfig.ownerId) {
+    console.log(`[slots] OWNER_ID set — /slot owner commands enabled`);
+  } else {
+    console.warn(
+      "[slots] OWNER_ID empty — /slot activate/buy work, but owner subcommands (create/config/panels) are locked"
+    );
+  }
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -255,6 +274,15 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand() && interaction.commandName === "cancel") {
       await cancelCommand.execute(interaction);
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === "slot") {
+      await slotCommand.execute(interaction);
+      return;
+    }
+
+    if (await handleSlotInteraction(interaction)) {
+      return;
     }
 
     if (interaction.isButton() && interaction.customId === "escrow_start_deal") {
@@ -382,6 +410,11 @@ client.on("interactionCreate", async (interaction) => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+  try {
+    await handleSlotMessage(message);
+  } catch (err) {
+    console.error("Erreur slot ping:", err);
+  }
   try {
     await handleEmojiListMessage(message);
   } catch (err) {
